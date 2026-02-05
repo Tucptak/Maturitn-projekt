@@ -1,0 +1,110 @@
+{% extends 'base.html' %}
+
+{% block title %}Profil - {{ current_user.name }}{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="profile-page">
+        <div class="profile-header">
+            <div class="profile-avatar">
+                {% if current_user.avatar and current_user.avatar != 'default.png' %}
+                    <img src="{{ url_for('static', filename='assets/' ~ current_user.avatar) }}" alt="Profilový obrázek" class="avatar-large avatar-img">
+                {% else %}
+                    <span class="avatar-large">{{ current_user.name[0].upper() }}</span>
+                {% endif %}
+            </div>
+            <div class="profile-info">
+                <h1>{{ current_user.name }}</h1>
+                <p class="profile-email">{{ current_user.email }}</p>
+                <span class="profile-role role-{{ current_user.role }}">
+                    {% if current_user.is_admin() %}Administrátor{% else %}Uživatel{% endif %}
+                </span>
+            </div>
+            <a href="{{ url_for('auth.edit_profile') }}" class="btn btn-outline">Upravit profil</a>
+        </div>
+        
+        <div class="profile-stats">
+            <div class="stat-card">
+                <span class="stat-value">{{ stats.total_games }}</span>
+                <span class="stat-label">Odehraných her</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-value">{{ stats.average_score }}%</span>
+                <span class="stat-label">Průměrné skóre</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-value">{{ stats.best_score }}%</span>
+                <span class="stat-label">Nejlepší skóre</span>
+            </div>
+            <div class="stat-card">
+                <span class="stat-value">{{ stats.total_quizzes_created }}</span>
+                <span class="stat-label">Vytvořených kvízů</span>
+            </div>
+        </div>
+        
+        <div class="profile-section">
+            <h2>Poslední hry</h2>
+            
+            {% if recent_games %}
+                <div class="games-table">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Kvíz</th>
+                                <th>Skóre</th>
+                                <th>Čas</th>
+                                <th>Datum</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for game in recent_games %}
+                                <tr>
+                                    <td>
+                                        <a href="{{ url_for('quiz.quiz_detail', quiz_id=game.quiz_id) }}">
+                                            {{ game.quiz.name }}
+                                        </a>
+                                    </td>
+                                    <td>
+                                        <span class="score-badge 
+                                            {% if game.score / game.max_score >= 0.8 %}score-good
+                                            {% elif game.score / game.max_score >= 0.5 %}score-ok
+                                            {% else %}score-bad{% endif %}">
+                                            {{ game.score }}/{{ game.max_score }}
+                                            ({{ (game.score / game.max_score * 100)|round|int }}%)
+                                        </span>
+                                    </td>
+                                    <td>{{ game.time_spent }}s</td>
+                                    <td>{{ game.date.strftime('%d.%m.%Y %H:%M') }}</td>
+                                </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            {% else %}
+                <p class="text-muted">Zatím jste nehráli žádný kvíz.</p>
+            {% endif %}
+        </div>
+        
+        <div class="profile-section">
+            <h2>Změna hesla</h2>
+            <form method="POST" action="{{ url_for('auth.change_password') }}" class="password-form">
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="current_password">Současné heslo</label>
+                        <input type="password" id="current_password" name="current_password" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="new_password">Nové heslo</label>
+                        <input type="password" id="new_password" name="new_password" required minlength="6">
+                    </div>
+                    <div class="form-group">
+                        <label for="confirm_password">Potvrzení hesla</label>
+                        <input type="password" id="confirm_password" name="confirm_password" required>
+                    </div>
+                </div>
+                <button type="submit" class="btn btn-primary">Změnit heslo</button>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

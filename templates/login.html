@@ -1,0 +1,39 @@
+{% extends 'base.html' %}
+
+{% block title %}Přihlášení - QuizApp{% endblock %}
+
+{% block content %}
+<div class="auth-container">
+    <div class="auth-card">
+        <div class="auth-header">
+            <h1>Přihlášení</h1>
+            <p>Vítejte zpět! Přihlaste se ke svému účtu.</p>
+        </div>
+        
+        <form method="POST" class="auth-form">
+            <div class="form-group">
+                <label for="email">Email</label>
+                <input type="email" id="email" name="email" required 
+                       placeholder="vas@email.cz" autocomplete="email">
+            </div>
+            
+            <div class="form-group">
+                <label for="password">Heslo</label>
+                <input type="password" id="password" name="password" required 
+                       placeholder="Vaše heslo" autocomplete="current-password">
+            </div>
+            
+            <div class="form-group form-checkbox">
+                <input type="checkbox" id="remember" name="remember">
+                <label for="remember">Zapamatovat si mě</label>
+            </div>
+            
+            <button type="submit" class="btn btn-primary btn-block">Přihlásit se</button>
+        </form>
+        
+        <div class="auth-footer">
+            <p>Nemáte účet? <a href="{{ url_for('auth.register') }}">Zaregistrujte se</a></p>
+        </div>
+    </div>
+</div>
+{% endblock %}

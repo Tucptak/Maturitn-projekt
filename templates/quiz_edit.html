@@ -1,0 +1,363 @@
+{% extends 'base.html' %}
+
+{% block title %}Upravit: {{ quiz.name }} - QuizApp{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="page-header">
+        <h1>Upravit kvíz</h1>
+    </div>
+    
+    <div class="edit-quiz-layout">
+        <div class="form-card">
+            <h2>Základní informace</h2>
+            <form method="POST" class="quiz-form">
+                <div class="form-group">
+                    <label for="name">Název kvízu</label>
+                    <input type="text" id="name" name="name" required 
+                           value="{{ quiz.name }}" minlength="3">
+                </div>
+                
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="category">Kategorie</label>
+                        <input type="text" id="category" name="category" required 
+                               value="{{ quiz.category }}" list="categories">
+                        <datalist id="categories">
+                            <option value="Zeměpis">
+                            <option value="Historie">
+                            <option value="Věda">
+                            <option value="Matematika">
+                            <option value="Sport">
+                            <option value="Filmy">
+                            <option value="Hudba">
+                            <option value="Všeobecné znalosti">
+                        </datalist>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="difficulty">Obtížnost</label>
+                        <select id="difficulty" name="difficulty" required>
+                            <option value="easy" {% if quiz.difficulty == 'easy' %}selected{% endif %}>Lehký</option>
+                            <option value="medium" {% if quiz.difficulty == 'medium' %}selected{% endif %}>Střední</option>
+                            <option value="hard" {% if quiz.difficulty == 'hard' %}selected{% endif %}>Těžký</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="time_limit">Čas na otázku (s)</label>
+                        <input type="number" id="time_limit" name="time_limit" 
+                               value="{{ quiz.time_limit }}" min="5" max="120" required>
+                    </div>
+                </div>
+                
+                <button type="submit" class="btn btn-primary">Uložit změny</button>
+            </form>
+        </div>
+        
+        <div class="questions-section">
+            <div class="questions-header">
+                <h2>Otázky ({{ quiz.questions|length }})</h2>
+                <button class="btn btn-primary" onclick="showAddQuestionModal()">+ Přidat otázku</button>
+            </div>
+            
+            <div class="questions-list" id="questionsList">
+                {% if quiz.questions %}
+                    {% for question in quiz.questions %}
+                        <div class="question-card" data-id="{{ question.id }}">
+                            <div class="question-card-header">
+                                <span class="question-num">{{ loop.index }}.</span>
+                                <span class="question-text">{{ question.text }}</span>
+                                <div class="question-actions">
+                                    <button class="btn btn-sm btn-outline" 
+                                            onclick='showEditQuestionModal({{ question.id }}, {{ question.text|tojson }}, {{ question.answers|map(attribute="text")|list|tojson }}, {{ question.answers|map(attribute="is_correct")|list|tojson }})'>✏️</button>
+                                    <button class="btn btn-sm btn-danger" 
+                                            onclick="deleteQuestion({{ question.id }})">🗑️</button>
+                                </div>
+                            </div>
+                            <div class="question-answers">
+                                {% for answer in question.answers %}
+                                    <span class="answer-tag {% if answer.is_correct %}correct{% endif %}">
+                                        {{ ['A', 'B', 'C', 'D'][loop.index0] }}: {{ answer.text }}
+                                        {% if answer.is_correct %}✓{% endif %}
+                                    </span>
+                                {% endfor %}
+                            </div>
+                        </div>
+                    {% endfor %}
+                {% else %}
+                    <div class="empty-state" id="emptyState">
+                        <p>Zatím nemáte žádné otázky. Přidejte první otázku!</p>
+                    </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Modal pro přidání otázky -->
+<div class="modal" id="addQuestionModal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>Přidat otázku</h3>
+            <button class="modal-close" onclick="hideAddQuestionModal()">×</button>
+        </div>
+        <form id="addQuestionForm" onsubmit="addQuestion(event)">
+            <div class="form-group">
+                <label for="questionText">Text otázky *</label>
+                <textarea id="questionText" name="text" required rows="3" 
+                          placeholder="Napište otázku..."></textarea>
+            </div>
+            
+            <div class="answers-inputs">
+                <div class="form-group answer-input">
+                    <label>Odpověď A *</label>
+                    <div class="answer-row">
+                        <input type="text" name="answer_a" required placeholder="Odpověď A">
+                        <label class="radio-label">
+                            <input type="radio" name="correct" value="0" required> Správná
+                        </label>
+                    </div>
+                </div>
+                
+                <div class="form-group answer-input">
+                    <label>Odpověď B *</label>
+                    <div class="answer-row">
+                        <input type="text" name="answer_b" required placeholder="Odpověď B">
+                        <label class="radio-label">
+                            <input type="radio" name="correct" value="1"> Správná
+                        </label>
+                    </div>
+                </div>
+                
+                <div class="form-group answer-input">
+                    <label>Odpověď C *</label>
+                    <div class="answer-row">
+                        <input type="text" name="answer_c" required placeholder="Odpověď C">
+                        <label class="radio-label">
+                            <input type="radio" name="correct" value="2"> Správná
+                        </label>
+                    </div>
+                </div>
+                
+                <div class="form-group answer-input">
+                    <label>Odpověď D *</label>
+                    <div class="answer-row">
+                        <input type="text" name="answer_d" required placeholder="Odpověď D">
+                        <label class="radio-label">
+                            <input type="radio" name="correct" value="3"> Správná
+                        </label>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="modal-actions">
+                <button type="button" class="btn btn-outline" onclick="hideAddQuestionModal()">Zrušit</button>
+                <button type="submit" class="btn btn-primary">Přidat otázku</button>
+            </div>
+        </form>
+    </div>
+</div>
+<!-- Modal pro úpravu otázky -->
+<div class="modal" id="editQuestionModal">
+    <div class="modal-content">
+        <div class="modal-header">
+            <h3>Upravit otázku</h3>
+            <button class="modal-close" onclick="hideEditQuestionModal()">×</button>
+        </div>
+        <form id="editQuestionForm" onsubmit="editQuestion(event)">
+            <input type="hidden" id="editQuestionId">
+            <div class="form-group">
+                <label for="editQuestionText">Text otázky *</label>
+                <textarea id="editQuestionText" name="text" required rows="3" 
+                          placeholder="Napište otázku..."></textarea>
+            </div>
+            
+            <div class="answers-inputs">
+                <div class="form-group answer-input">
+                    <label>Odpověď A *</label>
+                    <div class="answer-row">
+                        <input type="text" id="editAnswerA" name="answer_a" required placeholder="Odpověď A">
+                        <label class="radio-label">
+                            <input type="radio" name="edit_correct" value="0" required> Správná
+                        </label>
+                    </div>
+                </div>
+                
+                <div class="form-group answer-input">
+                    <label>Odpověď B *</label>
+                    <div class="answer-row">
+                        <input type="text" id="editAnswerB" name="answer_b" required placeholder="Odpověď B">
+                        <label class="radio-label">
+                            <input type="radio" name="edit_correct" value="1"> Správná
+                        </label>
+                    </div>
+                </div>
+                
+                <div class="form-group answer-input">
+                    <label>Odpověď C *</label>
+                    <div class="answer-row">
+                        <input type="text" id="editAnswerC" name="answer_c" required placeholder="Odpověď C">
+                        <label class="radio-label">
+                            <input type="radio" name="edit_correct" value="2"> Správná
+                        </label>
+                    </div>
+                </div>
+                
+                <div class="form-group answer-input">
+                    <label>Odpověď D *</label>
+                    <div class="answer-row">
+                        <input type="text" id="editAnswerD" name="answer_d" required placeholder="Odpověď D">
+                        <label class="radio-label">
+                            <input type="radio" name="edit_correct" value="3"> Správná
+                        </label>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="modal-actions">
+                <button type="button" class="btn btn-outline" onclick="hideEditQuestionModal()">Zrušit</button>
+                <button type="submit" class="btn btn-primary">Uložit změny</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const QUIZ_ID = {{ quiz.id }};
+
+function showAddQuestionModal() {
+    document.getElementById('addQuestionModal').classList.add('active');
+}
+
+function hideAddQuestionModal() {
+    document.getElementById('addQuestionModal').classList.remove('active');
+    document.getElementById('addQuestionForm').reset();
+}
+
+async function addQuestion(event) {
+    event.preventDefault();
+    
+    const form = event.target;
+    const formData = new FormData(form);
+    
+    const correctIndex = parseInt(formData.get('correct'));
+    const answers = [
+        { text: formData.get('answer_a'), is_correct: correctIndex === 0 },
+        { text: formData.get('answer_b'), is_correct: correctIndex === 1 },
+        { text: formData.get('answer_c'), is_correct: correctIndex === 2 },
+        { text: formData.get('answer_d'), is_correct: correctIndex === 3 }
+    ];
+    
+    try {
+        const response = await fetch(`/quiz/${QUIZ_ID}/add-question`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                text: formData.get('text'),
+                answers: answers
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            location.reload();
+        } else {
+            alert(data.error || 'Chyba při přidávání otázky');
+        }
+    } catch (error) {
+        alert('Chyba při komunikaci se serverem');
+    }
+}
+
+async function deleteQuestion(questionId) {
+    if (!confirm('Opravdu chcete smazat tuto otázku?')) return;
+    
+    try {
+        const response = await fetch(`/question/${questionId}`, {
+            method: 'DELETE'
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            document.querySelector(`[data-id="${questionId}"]`).remove();
+        } else {
+            alert(data.error || 'Chyba při mazání otázky');
+        }
+    } catch (error) {
+        alert('Chyba při komunikaci se serverem');
+    }
+}
+
+function showEditQuestionModal(questionId, text, answers, correctFlags) {
+    document.getElementById('editQuestionId').value = questionId;
+    document.getElementById('editQuestionText').value = text;
+    document.getElementById('editAnswerA').value = answers[0] || '';
+    document.getElementById('editAnswerB').value = answers[1] || '';
+    document.getElementById('editAnswerC').value = answers[2] || '';
+    document.getElementById('editAnswerD').value = answers[3] || '';
+    
+    // Nastavení správné odpovědi
+    const correctIndex = correctFlags.indexOf(true);
+    if (correctIndex >= 0) {
+        document.querySelectorAll('input[name="edit_correct"]')[correctIndex].checked = true;
+    }
+    
+    document.getElementById('editQuestionModal').classList.add('active');
+}
+
+function hideEditQuestionModal() {
+    document.getElementById('editQuestionModal').classList.remove('active');
+    document.getElementById('editQuestionForm').reset();
+}
+
+async function editQuestion(event) {
+    event.preventDefault();
+    
+    const questionId = document.getElementById('editQuestionId').value;
+    const form = event.target;
+    const formData = new FormData(form);
+    
+    const correctIndex = parseInt(formData.get('edit_correct'));
+    const answers = [
+        { text: formData.get('answer_a'), is_correct: correctIndex === 0 },
+        { text: formData.get('answer_b'), is_correct: correctIndex === 1 },
+        { text: formData.get('answer_c'), is_correct: correctIndex === 2 },
+        { text: formData.get('answer_d'), is_correct: correctIndex === 3 }
+    ];
+    
+    try {
+        const response = await fetch(`/question/${questionId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                text: formData.get('text'),
+                answers: answers
+            })
+        });
+        
+        const data = await response.json();
+        
+        if (data.success) {
+            location.reload();
+        } else {
+            alert(data.error || 'Chyba při úpravě otázky');
+        }
+    } catch (error) {
+        alert('Chyba při komunikaci se serverem');
+    }
+}
+
+// Zavření modalu kliknutím mimo
+document.getElementById('addQuestionModal').addEventListener('click', function(e) {
+    if (e.target === this) hideAddQuestionModal();
+});
+document.getElementById('editQuestionModal').addEventListener('click', function(e) {
+    if (e.target === this) hideEditQuestionModal();
+});
+</script>
+{% endblock %}

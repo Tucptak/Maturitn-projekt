@@ -1,0 +1,73 @@
+{% extends 'base.html' %}
+
+{% block title %}Správa kvízů - Admin{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="page-header">
+        <h1>📝 Správa kvízů</h1>
+        <a href="{{ url_for('admin.dashboard') }}" class="btn btn-outline">← Zpět na dashboard</a>
+    </div>
+    
+    {% if quizzes %}
+        <div class="quizzes-table">
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Název</th>
+                        <th>Kategorie</th>
+                        <th>Obtížnost</th>
+                        <th>Otázek</th>
+                        <th>Autor</th>
+                        <th>Vytvořeno</th>
+                        <th>Akce</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for quiz in quizzes %}
+                        <tr>
+                            <td>{{ quiz.id }}</td>
+                            <td>
+                                <a href="{{ url_for('quiz.quiz_detail', quiz_id=quiz.id) }}">
+                                    {{ quiz.name }}
+                                </a>
+                            </td>
+                            <td>{{ quiz.category }}</td>
+                            <td>
+                                <span class="difficulty-badge difficulty-{{ quiz.difficulty }}">
+                                    {% if quiz.difficulty == 'easy' %}Lehký
+                                    {% elif quiz.difficulty == 'medium' %}Střední
+                                    {% else %}Těžký{% endif %}
+                                </span>
+                            </td>
+                            <td>{{ quiz.get_question_count() }}</td>
+                            <td>{{ quiz.author.name }}</td>
+                            <td>{{ quiz.created_at.strftime('%d.%m.%Y') }}</td>
+                            <td class="actions-cell">
+                                <a href="{{ url_for('quiz.edit_quiz', quiz_id=quiz.id) }}" class="btn btn-sm btn-outline">
+                                    Upravit
+                                </a>
+                                <form method="POST" action="{{ url_for('admin.clear_quiz_results', quiz_id=quiz.id) }}" 
+                                      class="inline-form" onsubmit="return confirm('Opravdu chcete smazat všechny záznamy a výsledky pro kvíz {{ quiz.name }}?');">
+                                    <button type="submit" class="btn btn-sm btn-warning">🧹 Smazat záznamy</button>
+                                </form>
+                                <form method="POST" action="{{ url_for('admin.delete_quiz', quiz_id=quiz.id) }}" 
+                                      class="inline-form" onsubmit="return confirm('Opravdu chcete smazat kvíz {{ quiz.name }}?');">
+                                    <button type="submit" class="btn btn-sm btn-danger">Smazat</button>
+                                </form>
+                            </td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <div class="empty-state">
+            <div class="empty-icon">📝</div>
+            <h3>Žádné kvízy</h3>
+            <p>V systému zatím nejsou žádné kvízy.</p>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

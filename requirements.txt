@@ -1,0 +1,23 @@
+# QuizApp - Python Dependencies
+# Instalace: pip install -r requirements.txt
+
+# Flask a rozšíření
+Flask>=3.0.0
+Flask-SQLAlchemy>=3.1.0
+Flask-Login>=0.6.3
+
+# Databáze
+PyMySQL>=1.1.0
+cryptography>=41.0.0
+
+# Hesla a bezpečnost
+Werkzeug>=3.0.0
+
+# Environment proměnné
+python-dotenv>=1.0.0
+
+# Desktop aplikace (PyQt5)
+PyQt5>=5.15.0
+
+# HTTP požadavky (pro desktop app)
+requests>=2.31.0

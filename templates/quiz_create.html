@@ -1,0 +1,59 @@
+{% extends 'base.html' %}
+
+{% block title %}Vytvořit kvíz - QuizApp{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="page-header">
+        <h1>Vytvořit nový kvíz</h1>
+    </div>
+    
+    <div class="form-card">
+        <form method="POST" class="quiz-form">
+            <div class="form-group">
+                <label for="name">Název kvízu *</label>
+                <input type="text" id="name" name="name" required 
+                       placeholder="Např. Hlavní města Evropy" minlength="3">
+            </div>
+            
+            <div class="form-row">
+                <div class="form-group">
+                    <label for="category">Kategorie *</label>
+                    <input type="text" id="category" name="category" required 
+                           placeholder="Např. Zeměpis" list="categories">
+                    <datalist id="categories">
+                        <option value="Zeměpis">
+                        <option value="Historie">
+                        <option value="Věda">
+                        <option value="Matematika">
+                        <option value="Sport">
+                        <option value="Filmy">
+                        <option value="Hudba">
+                        <option value="Všeobecné znalosti">
+                    </datalist>
+                </div>
+                
+                <div class="form-group">
+                    <label for="difficulty">Obtížnost *</label>
+                    <select id="difficulty" name="difficulty" required>
+                        <option value="easy">Lehký</option>
+                        <option value="medium" selected>Střední</option>
+                        <option value="hard">Těžký</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label for="time_limit">Čas na otázku (sekundy) *</label>
+                    <input type="number" id="time_limit" name="time_limit" 
+                           value="30" min="5" max="120" required>
+                </div>
+            </div>
+            
+            <div class="form-actions">
+                <a href="{{ url_for('quiz.list_quizzes') }}" class="btn btn-outline">Zrušit</a>
+                <button type="submit" class="btn btn-primary">Vytvořit a přidat otázky</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

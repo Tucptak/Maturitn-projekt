@@ -1,0 +1,85 @@
+{% extends 'base.html' %}
+
+{% block title %}Hrát: {{ quiz.name }} - QuizApp{% endblock %}
+
+{% block extra_css %}
+<style>
+    .quiz-game { max-width: 800px; margin: 0 auto; padding: 20px; }
+    .quiz-game-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 30px; padding: 15px; background: var(--card-bg); border-radius: var(--radius); }
+    .quiz-timer { font-size: 1.5rem; font-weight: bold; }
+    .quiz-timer.warning { color: var(--warning); }
+    .quiz-timer.danger { color: var(--danger); animation: pulse 0.5s infinite; }
+    .quiz-progress { flex: 1; margin: 0 20px; }
+    .progress-bar { height: 8px; background: var(--border); border-radius: 4px; overflow: hidden; }
+    .progress-fill { height: 100%; background: var(--primary); transition: width 0.3s; }
+    .question-container { background: var(--card-bg); border-radius: var(--radius); padding: 30px; margin-bottom: 20px; }
+    .question-number { color: var(--text-muted); margin-bottom: 10px; }
+    .question-text { font-size: 1.5rem; font-weight: 500; margin-bottom: 30px; }
+    .answers-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+    .answer-btn { padding: 20px; border: 2px solid var(--border); border-radius: var(--radius); background: var(--bg); cursor: pointer; text-align: left; font-size: 1.1rem; transition: all 0.2s; display: flex; align-items: center; gap: 15px; }
+    .answer-btn:hover { border-color: var(--primary); background: rgba(99, 102, 241, 0.1); }
+    .answer-btn.selected { border-color: var(--primary); background: rgba(99, 102, 241, 0.2); }
+    .answer-btn.correct { border-color: var(--success); background: rgba(34, 197, 94, 0.2); }
+    .answer-btn.incorrect { border-color: var(--danger); background: rgba(239, 68, 68, 0.2); }
+    .answer-label { width: 40px; height: 40px; display: flex; align-items: center; justify-content: center; border-radius: 50%; background: var(--border); font-weight: bold; }
+    .quiz-results { background: var(--card-bg); border-radius: var(--radius); padding: 40px; text-align: center; }
+    .result-score { font-size: 4rem; font-weight: bold; color: var(--primary); }
+    .result-details { margin: 20px 0; }
+    .results-list { margin-top: 30px; text-align: left; }
+    .result-item { padding: 15px; border-radius: var(--radius); margin-bottom: 10px; }
+    .result-item.correct { background: rgba(34, 197, 94, 0.1); border-left: 4px solid var(--success); }
+    .result-item.incorrect { background: rgba(239, 68, 68, 0.1); border-left: 4px solid var(--danger); }
+    @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+    @media (max-width: 600px) { .answers-grid { grid-template-columns: 1fr; } }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="quiz-game" id="quizGame">
+    <div class="quiz-game-header">
+        <div class="quiz-timer" id="timer">{{ quiz.time_limit }}</div>
+        <div class="quiz-progress">
+            <div class="progress-bar">
+                <div class="progress-fill" id="progressFill" style="width: 0%"></div>
+            </div>
+        </div>
+        <div class="quiz-score">
+            <span id="currentQuestion">1</span> / <span id="totalQuestions">?</span>
+        </div>
+    </div>
+    
+    <div class="question-container" id="questionContainer">
+        <div class="question-number">Otázka <span id="questionNum">1</span></div>
+        <div class="question-text" id="questionText">Načítání...</div>
+        
+        <div class="answers-grid" id="answersGrid">
+            <!-- Answers will be loaded dynamically -->
+        </div>
+    </div>
+    
+    <div class="quiz-results" id="quizResults" style="display: none;">
+        <h2>Výsledky kvízu</h2>
+        <div class="result-score" id="resultScore">0%</div>
+        <div class="result-details">
+            <p><strong id="resultCorrect">0</strong> z <strong id="resultTotal">0</strong> správných odpovědí</p>
+            <p>Čas: <strong id="resultTime">0</strong> sekund</p>
+        </div>
+        
+        <div class="results-list" id="resultsList"></div>
+        
+        <div class="result-actions">
+            <a href="{{ url_for('quiz.quiz_detail', quiz_id=quiz.id) }}" class="btn btn-outline">Zpět na kvíz</a>
+            <a href="{{ url_for('quiz.play_quiz', quiz_id=quiz.id) }}" class="btn btn-primary">Hrát znovu</a>
+        </div>
+    </div>
+</div>
+
+{% endblock %}
+
+{% block extra_js %}
+<script>
+const QUIZ_ID = {{ quiz.id }};
+const TIME_LIMIT = {{ quiz.time_limit }};
+</script>
+<script src="{{ url_for('static', filename='js/quiz.js') }}"></script>
+{% endblock %}

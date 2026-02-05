@@ -1,0 +1,97 @@
+{% extends 'base.html' %}
+
+{% block title %}Admin Dashboard - QuizApp{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="page-header">
+        <h1>🛠️ Admin Dashboard</h1>
+    </div>
+    
+    <div class="admin-stats">
+        <div class="stat-card">
+            <span class="stat-value">{{ stats.total_users }}</span>
+            <span class="stat-label">Uživatelů</span>
+        </div>
+        <div class="stat-card">
+            <span class="stat-value">{{ stats.admin_count }}</span>
+            <span class="stat-label">Administrátorů</span>
+        </div>
+        <div class="stat-card">
+            <span class="stat-value">{{ stats.total_quizzes }}</span>
+            <span class="stat-label">Kvízů</span>
+        </div>
+        <div class="stat-card">
+            <span class="stat-value">{{ stats.total_games }}</span>
+            <span class="stat-label">Odehraných her</span>
+        </div>
+    </div>
+    
+    <div class="admin-grid">
+        <div class="admin-section">
+            <div class="section-header">
+                <h2>Nejnovější uživatelé</h2>
+                <a href="{{ url_for('admin.users') }}" class="btn btn-outline btn-sm">Všichni uživatelé</a>
+            </div>
+            
+            <div class="admin-list">
+                {% for user in recent_users %}
+                    <div class="admin-list-item">
+                        <div class="item-info">
+                            <span class="item-avatar">{{ user.name[0].upper() }}</span>
+                            <div class="item-details">
+                                <span class="item-name">{{ user.name }}</span>
+                                <span class="item-meta">{{ user.email }}</span>
+                            </div>
+                        </div>
+                        <span class="role-badge role-{{ user.role }}">{{ user.role }}</span>
+                    </div>
+                {% endfor %}
+            </div>
+        </div>
+        
+        <div class="admin-section">
+            <div class="section-header">
+                <h2>Nejnovější kvízy</h2>
+                <a href="{{ url_for('admin.quizzes') }}" class="btn btn-outline btn-sm">Všechny kvízy</a>
+            </div>
+            
+            <div class="admin-list">
+                {% for quiz in recent_quizzes %}
+                    <div class="admin-list-item">
+                        <div class="item-info">
+                            <div class="item-details">
+                                <span class="item-name">{{ quiz.name }}</span>
+                                <span class="item-meta">{{ quiz.category }} • {{ quiz.author.name }}</span>
+                            </div>
+                        </div>
+                        <span class="quiz-badge">{{ quiz.get_question_count() }} otázek</span>
+                    </div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+    
+    <div class="admin-nav">
+        <a href="{{ url_for('admin.users') }}" class="admin-nav-card">
+            <span class="nav-icon">👥</span>
+            <span class="nav-title">Správa uživatelů</span>
+            <span class="nav-desc">Zobrazit, upravit role, smazat uživatele</span>
+        </a>
+        <a href="{{ url_for('admin.quizzes') }}" class="admin-nav-card">
+            <span class="nav-icon">📝</span>
+            <span class="nav-title">Správa kvízů</span>
+            <span class="nav-desc">Zobrazit, upravit, smazat kvízy</span>
+        </a>
+        <form method="POST" action="{{ url_for('admin.clear_all_results') }}" 
+              class="admin-nav-card" style="border: none; cursor: pointer;"
+              onsubmit="return confirm('Opravdu chcete smazat VŠECHNY výsledky a záznamy her? Tuto akci nelze vrátit!');">
+            <button type="submit" style="all: unset; width: 100%; text-align: center; cursor: pointer;">
+                <span class="nav-icon">🧹</span>
+                <span class="nav-title">Smazat všechny záznamy</span>
+                <span class="nav-desc">Smazat všechny výsledky a odpovědi ze všech kvízů</span>
+            </button>
+        </form>
+    </div>
+</div>
+{% endblock %}

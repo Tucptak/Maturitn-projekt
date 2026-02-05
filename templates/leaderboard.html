@@ -1,0 +1,56 @@
+{% extends 'base.html' %}
+
+{% block title %}Žebříček - QuizApp{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="page-header">
+        <h1>🏆 Žebříček hráčů</h1>
+        <p>Nejlepší hráči podle průměrného skóre</p>
+    </div>
+    
+    {% if leaderboard %}
+        <div class="leaderboard-table">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Pořadí</th>
+                        <th>Hráč</th>
+                        <th>Průměrné skóre</th>
+                        <th>Odehraných her</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in leaderboard %}
+                        <tr class="{% if item.rank <= 3 %}top-rank rank-{{ item.rank }}{% endif %}
+                                  {% if current_user.is_authenticated and item.user.id == current_user.id %}current-user{% endif %}">
+                            <td class="rank-cell">
+                                {% if item.rank == 1 %}🥇
+                                {% elif item.rank == 2 %}🥈
+                                {% elif item.rank == 3 %}🥉
+                                {% else %}{{ item.rank }}.
+                                {% endif %}
+                            </td>
+                            <td class="player-cell">
+                                <span class="player-avatar">{{ item.user.name[0].upper() }}</span>
+                                <span class="player-name">{{ item.user.name }}</span>
+                            </td>
+                            <td class="score-cell">
+                                <span class="score-value">{{ item.avg_score }}%</span>
+                            </td>
+                            <td class="games-cell">{{ item.games_played }}</td>
+                        </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <div class="empty-state">
+            <div class="empty-icon">🏆</div>
+            <h3>Žádné výsledky</h3>
+            <p>Zatím nikdo nehrál žádný kvíz. Buďte první!</p>
+            <a href="{{ url_for('quiz.list_quizzes') }}" class="btn btn-primary">Procházet kvízy</a>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

@@ -1,0 +1,50 @@
+{% extends 'base.html' %}
+
+{% block title %}Moje kvízy - QuizApp{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="page-header">
+        <h1>Moje kvízy</h1>
+        <div class="header-actions">
+            <a href="{{ url_for('quiz.create_quiz') }}" class="btn btn-primary">+ Vytvořit kvíz</a>
+        </div>
+    </div>
+    
+    {% if quizzes %}
+        <div class="quiz-grid">
+            {% for quiz in quizzes %}
+                <div class="quiz-card">
+                    <div class="quiz-card-header">
+                        <span class="quiz-category">{{ quiz.category }}</span>
+                        <span class="quiz-difficulty difficulty-{{ quiz.difficulty }}">
+                            {% if quiz.difficulty == 'easy' %}Lehký
+                            {% elif quiz.difficulty == 'medium' %}Střední
+                            {% else %}Těžký{% endif %}
+                        </span>
+                    </div>
+                    <h3 class="quiz-card-title">{{ quiz.name }}</h3>
+                    <div class="quiz-card-meta">
+                        <span>📝 {{ quiz.get_question_count() }} otázek</span>
+                        <span>⏱️ {{ quiz.time_limit }}s / otázka</span>
+                    </div>
+                    <div class="quiz-card-footer">
+                        <span class="quiz-date">{{ quiz.created_at.strftime('%d.%m.%Y') }}</span>
+                        <div class="quiz-card-actions">
+                            <a href="{{ url_for('quiz.edit_quiz', quiz_id=quiz.id) }}" class="btn btn-outline btn-sm">Upravit</a>
+                            <a href="{{ url_for('quiz.quiz_detail', quiz_id=quiz.id) }}" class="btn btn-primary btn-sm">Zobrazit</a>
+                        </div>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+    {% else %}
+        <div class="empty-state">
+            <div class="empty-icon">📝</div>
+            <h3>Zatím nemáte žádné kvízy</h3>
+            <p>Vytvořte svůj první kvíz a sdílejte ho s ostatními!</p>
+            <a href="{{ url_for('quiz.create_quiz') }}" class="btn btn-primary">Vytvořit kvíz</a>
+        </div>
+    {% endif %}
+</div>
+{% endblock %}

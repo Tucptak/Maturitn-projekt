@@ -1,0 +1,32 @@
+{% extends 'base.html' %}
+
+{% block title %}Upravit profil - QuizApp{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="page-header">
+        <h1>Upravit profil</h1>
+    </div>
+    
+    <div class="form-card">
+        <form method="POST" enctype="multipart/form-data" class="edit-form">
+            <div class="form-group">
+                <label for="name">Jméno</label>
+                <input type="text" id="name" name="name" required 
+                       value="{{ current_user.name }}" minlength="2">
+            </div>
+            
+            <div class="form-group">
+                <label for="avatar">Profilový obrázek</label>
+                <input type="file" id="avatar" name="avatar" accept="image/*">
+                <small class="form-hint">Podporované formáty: PNG, JPG, GIF</small>
+            </div>
+            
+            <div class="form-actions">
+                <a href="{{ url_for('auth.profile') }}" class="btn btn-outline">Zrušit</a>
+                <button type="submit" class="btn btn-primary">Uložit změny</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,60 @@
+{% extends 'base.html' %}
+
+{% block title %}Správa uživatelů - Admin{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="page-header">
+        <h1>👥 Správa uživatelů</h1>
+        <a href="{{ url_for('admin.dashboard') }}" class="btn btn-outline">← Zpět na dashboard</a>
+    </div>
+    
+    <div class="users-table">
+        <table>
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Uživatel</th>
+                    <th>Email</th>
+                    <th>Role</th>
+                    <th>Registrace</th>
+                    <th>Akce</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for user in users %}
+                    <tr {% if user.id == current_user.id %}class="current-user"{% endif %}>
+                        <td>{{ user.id }}</td>
+                        <td class="user-cell">
+                            <span class="user-avatar">{{ user.name[0].upper() }}</span>
+                            <span>{{ user.name }}</span>
+                        </td>
+                        <td>{{ user.email }}</td>
+                        <td>
+                            <span class="role-badge role-{{ user.role }}">
+                                {% if user.role == 'admin' %}Administrátor{% else %}Uživatel{% endif %}
+                            </span>
+                        </td>
+                        <td>{{ user.created_at.strftime('%d.%m.%Y') }}</td>
+                        <td class="actions-cell">
+                            {% if user.id != current_user.id %}
+                                <form method="POST" action="{{ url_for('admin.toggle_role', user_id=user.id) }}" class="inline-form">
+                                    <button type="submit" class="btn btn-sm btn-outline">
+                                        {% if user.role == 'admin' %}Odebrat admin{% else %}Povýšit na admin{% endif %}
+                                    </button>
+                                </form>
+                                <form method="POST" action="{{ url_for('admin.delete_user', user_id=user.id) }}" 
+                                      class="inline-form" onsubmit="return confirm('Opravdu chcete smazat uživatele {{ user.name }}?');">
+                                    <button type="submit" class="btn btn-sm btn-danger">Smazat</button>
+                                </form>
+                            {% else %}
+                                <span class="text-muted">Váš účet</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    </div>
+</div>
+{% endblock %}

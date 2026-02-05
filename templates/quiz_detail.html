@@ -1,0 +1,74 @@
+{% extends 'base.html' %}
+
+{% block title %}{{ quiz.name }} - QuizApp{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="quiz-detail">
+        <div class="quiz-detail-header">
+            <div class="quiz-detail-info">
+                <div class="quiz-badges">
+                    <span class="quiz-category">{{ quiz.category }}</span>
+                    <span class="quiz-difficulty difficulty-{{ quiz.difficulty }}">
+                        {% if quiz.difficulty == 'easy' %}Lehký
+                        {% elif quiz.difficulty == 'medium' %}Střední
+                        {% else %}Těžký{% endif %}
+                    </span>
+                </div>
+                <h1>{{ quiz.name }}</h1>
+                <div class="quiz-meta">
+                    <span>👤 Autor: {{ quiz.author.name }}</span>
+                    <span>📝 {{ quiz.get_question_count() }} otázek</span>
+                    <span>⏱️ {{ quiz.time_limit }} sekund na otázku</span>
+                    <span>📅 Vytvořeno: {{ quiz.created_at.strftime('%d.%m.%Y') }}</span>
+                </div>
+            </div>
+        </div>
+        
+        <div class="quiz-detail-actions">
+            {% if quiz.get_question_count() > 0 %}
+                {% if current_user.is_authenticated %}
+                    <a href="{{ url_for('quiz.play_quiz', quiz_id=quiz.id) }}" class="btn btn-primary btn-lg">
+                        🖥️ Hrát kvíz
+                    </a>
+                {% else %}
+                    <a href="{{ url_for('auth.login') }}" class="btn btn-primary btn-lg">
+                        Přihlaste se pro hraní
+                    </a>
+                {% endif %}
+            {% else %}
+                <div class="alert alert-warning">
+                    Tento kvíz zatím nemá žádné otázky.
+                </div>
+            {% endif %}
+            
+            {% if current_user.is_authenticated and (quiz.author_id == current_user.id or current_user.is_admin()) %}
+                <a href="{{ url_for('quiz.edit_quiz', quiz_id=quiz.id) }}" class="btn btn-outline">
+                    ✏️ Upravit
+                </a>
+                <form method="POST" action="{{ url_for('quiz.delete_quiz', quiz_id=quiz.id) }}" 
+                      class="inline-form" onsubmit="return confirm('Opravdu chcete smazat tento kvíz?');">
+                    <button type="submit" class="btn btn-danger">🗑️ Smazat</button>
+                </form>
+            {% endif %}
+        </div>
+        
+        <div class="quiz-detail-content">
+            <h2>Otázky v tomto kvízu</h2>
+            
+            {% if quiz.questions %}
+                <div class="questions-preview">
+                    {% for question in quiz.questions %}
+                        <div class="question-preview-card">
+                            <span class="question-number">{{ loop.index }}</span>
+                            <span class="question-text">{{ question.text }}</span>
+                        </div>
+                    {% endfor %}
+                </div>
+            {% else %}
+                <p class="text-muted">Tento kvíz zatím nemá žádné otázky.</p>
+            {% endif %}
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,111 @@
+{% extends 'base.html' %}
+
+{% block title %}QuizApp - Hlavní stránka{% endblock %}
+
+{% block content %}
+<section class="hero">
+    <div class="hero-content">
+        <h1>Vítejte v QuizApp</h1>
+        <p>Testujte své znalosti, vytvářejte vlastní kvízy a soutěžte s ostatními!</p>
+        <div class="hero-buttons">
+            {% if current_user.is_authenticated %}
+                <a href="{{ url_for('quiz.list_quizzes') }}" class="btn btn-primary btn-lg">Procházet kvízy</a>
+                <a href="{{ url_for('quiz.create_quiz') }}" class="btn btn-outline btn-lg">Vytvořit kvíz</a>
+            {% else %}
+                <a href="{{ url_for('auth.register') }}" class="btn btn-primary btn-lg">Začít zdarma</a>
+                <a href="{{ url_for('auth.login') }}" class="btn btn-outline btn-lg">Přihlásit se</a>
+            {% endif %}
+        </div>
+    </div>
+</section>
+
+<section class="section">
+    <div class="container">
+        <h2 class="section-title">Nejnovější kvízy</h2>
+        
+        {% if recent_quizzes %}
+            <div class="quiz-grid">
+                {% for quiz in recent_quizzes %}
+                    <div class="quiz-card">
+                        <div class="quiz-card-header">
+                            <span class="quiz-category">{{ quiz.category }}</span>
+                            <span class="quiz-difficulty difficulty-{{ quiz.difficulty }}">
+                                {% if quiz.difficulty == 'easy' %}Lehký
+                                {% elif quiz.difficulty == 'medium' %}Střední
+                                {% else %}Těžký{% endif %}
+                            </span>
+                        </div>
+                        <h3 class="quiz-card-title">{{ quiz.name }}</h3>
+                        <div class="quiz-card-meta">
+                            <span>📝 {{ quiz.get_question_count() }} otázek</span>
+                            <span>⏱️ {{ quiz.time_limit }}s / otázka</span>
+                        </div>
+                        <div class="quiz-card-footer">
+                            <span class="quiz-author">Autor: {{ quiz.author.name }}</span>
+                            <a href="{{ url_for('quiz.quiz_detail', quiz_id=quiz.id) }}" class="btn btn-primary btn-sm">Zobrazit</a>
+                        </div>
+                    </div>
+                {% endfor %}
+            </div>
+        {% else %}
+            <p class="text-center text-muted">Zatím nejsou k dispozici žádné kvízy.</p>
+        {% endif %}
+        
+        <div class="text-center mt-4">
+            <a href="{{ url_for('quiz.list_quizzes') }}" class="btn btn-outline">Zobrazit všechny kvízy</a>
+        </div>
+    </div>
+</section>
+
+{% if popular_quizzes %}
+<section class="section section-alt">
+    <div class="container">
+        <h2 class="section-title">Populární kvízy</h2>
+        
+        <div class="quiz-grid">
+            {% for item in popular_quizzes %}
+                <div class="quiz-card">
+                    <div class="quiz-card-header">
+                        <span class="quiz-category">{{ item.quiz.category }}</span>
+                        <span class="play-count">🎮 {{ item.play_count }}x zahráno</span>
+                    </div>
+                    <h3 class="quiz-card-title">{{ item.quiz.name }}</h3>
+                    <div class="quiz-card-meta">
+                        <span>📝 {{ item.quiz.get_question_count() }} otázek</span>
+                        <span>⏱️ {{ item.quiz.time_limit }}s / otázka</span>
+                    </div>
+                    <div class="quiz-card-footer">
+                        <span class="quiz-author">Autor: {{ item.quiz.author.name }}</span>
+                        <a href="{{ url_for('quiz.quiz_detail', quiz_id=item.quiz.id) }}" class="btn btn-primary btn-sm">Hrát</a>
+                    </div>
+                </div>
+            {% endfor %}
+        </div>
+    </div>
+</section>
+{% endif %}
+
+<section class="section">
+    <div class="container">
+        <h2 class="section-title">Jak to funguje?</h2>
+        
+        <div class="features-grid">
+            <div class="feature-card">
+                <div class="feature-icon">📝</div>
+                <h3>Vytvořte kvíz</h3>
+                <p>Vytvořte vlastní kvíz s otázkami a odpověďmi A, B, C, D.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">🎯</div>
+                <h3>Hrajte</h3>
+                <p>Vyberte si kvíz a odpovídejte na otázky v časovém limitu.</p>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">🏆</div>
+                <h3>Soutěžte</h3>
+                <p>Sledujte své skóre a porovnávejte se s ostatními v žebříčku.</p>
+            </div>
+        </div>
+    </div>
+</section>
+{% endblock %}
