@@ -2,7 +2,7 @@
 API endpointy pro desktop aplikaci.
 """
 import secrets
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from flask import Blueprint, request, jsonify
 from flask_login import login_user, current_user, login_required
 from database import db
@@ -19,7 +19,7 @@ def generate_sso_token(user_id):
     token = secrets.token_urlsafe(48)
     _sso_tokens[token] = {
         'user_id': user_id,
-        'expires': datetime.utcnow() + timedelta(minutes=2)
+        'expires': datetime.now(tz=timezone.utc) + timedelta(minutes=2)
     }
     return token
 
@@ -29,7 +29,7 @@ def validate_sso_token(token):
     token_data = _sso_tokens.pop(token, None)
     if not token_data:
         return None
-    if datetime.utcnow() > token_data['expires']:
+    if datetime.now(tz=timezone.utc) > token_data['expires']:
         return None
     return token_data['user_id']
 
@@ -241,3 +241,34 @@ def api_user_stats():
     """Statistiky přihlášeného uživatele."""
     stats = current_user.get_stats()
     return jsonify(stats)
+
+
+@api_bp.route('/achievements/<int:user_id>', methods=['GET'])
+def api_user_achievements(user_id):
+    """Vrátí achievements uživatele jako JSON."""
+    user = User.query.get_or_404(user_id)
+    
+    from achievements import get_user_achievements_data
+    data = get_user_achievements_data(user)
+    
+    result = []
+    for ach in data:
+        item = {
+            'id': ach['id'],
+            'name': ach['name'],
+            'description': ach['description'],
+            'icon': ach['icon'],
+            'tier': ach['tier'],
+            'category': ach['category'],
+            'earned': ach['earned'],
+            'current': ach['current'],
+            'target': ach['target'],
+            'percentage': ach['percentage'],
+        }
+        if ach['earned'] and ach['earned_at']:
+            item['earned_at'] = ach['earned_at'].strftime('%d.%m.%Y')
+        else:
+            item['earned_at'] = None
+        result.append(item)
+    
+    return jsonify(result)

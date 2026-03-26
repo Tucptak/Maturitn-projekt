@@ -133,9 +133,20 @@ def logout():
 @login_required
 def profile():
     """Profil uživatele."""
+    from achievements import check_achievements, get_user_achievements_data
+    
+    # Kontrola achievementů jako catch-all
+    new_achievements = check_achievements(current_user)
+    
     stats = current_user.get_stats()
     recent_games = current_user.game_results[-10:][::-1]  # Posledních 10 her
-    return render_template('profile.html', stats=stats, recent_games=recent_games)
+    achievements_data = get_user_achievements_data(current_user)
+    
+    return render_template('profile.html',
+                           stats=stats,
+                           recent_games=recent_games,
+                           achievements_data=achievements_data,
+                           new_achievements=new_achievements)
 
 
 @auth_bp.route('/profile/edit', methods=['GET', 'POST'])

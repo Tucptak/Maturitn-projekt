@@ -58,10 +58,12 @@
         {% if messages %}
             <div class="flash-messages">
                 {% for category, message in messages %}
+                    {% if category != 'achievement' %}
                     <div class="flash flash-{{ category }}">
                         <span>{{ message }}</span>
                         <button class="flash-close" onclick="this.parentElement.remove()">×</button>
                     </div>
+                    {% endif %}
                 {% endfor %}
             </div>
         {% endif %}
@@ -77,7 +79,46 @@
         </div>
     </footer>
 
+    <!-- Achievement notification container -->
+    <div id="achievement-notifications"></div>
+
     <script src="{{ url_for('static', filename='js/main.js') }}"></script>
+    
+    <!-- Achievement pop-up data from flash messages -->
+    <script>
+        (function() {
+            var achQueue = [];
+            {% with messages = get_flashed_messages(with_categories=true) %}
+                {% for category, message in messages %}
+                    {% if category == 'achievement' %}
+                        (function() {
+                            var parts = {{ message | tojson }}.split('|');
+                            achQueue.push({ name: parts[0].replace('achievement:', ''), icon: parts[1], tier: parts[2] });
+                        })();
+                    {% endif %}
+                {% endfor %}
+            {% endwith %}
+            {% if new_achievements is defined and new_achievements %}
+                {% for ach in new_achievements %}
+                    achQueue.push({
+                        name: {{ ach.name | tojson }},
+                        icon: {{ ach.icon | tojson }},
+                        tier: {{ ach.tier | tojson }}
+                    });
+                {% endfor %}
+            {% endif %}
+            if (achQueue.length > 0 && typeof showAchievementQueue === 'function') {
+                showAchievementQueue(achQueue);
+            } else if (achQueue.length > 0) {
+                document.addEventListener('DOMContentLoaded', function() {
+                    if (typeof showAchievementQueue === 'function') {
+                        showAchievementQueue(achQueue);
+                    }
+                });
+            }
+        })();
+    </script>
+    
     {% block extra_js %}{% endblock %}
 </body>
 </html>

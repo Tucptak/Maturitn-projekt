@@ -5,7 +5,7 @@ from flask import Blueprint, render_template, redirect, url_for, flash, request
 from flask_login import login_required, current_user
 from auth import admin_required
 from database import db
-from models import User, Quiz, GameResult
+from models import User, Quiz, GameResult, UserAnswer
 
 admin_bp = Blueprint('admin', __name__, url_prefix='/admin')
 

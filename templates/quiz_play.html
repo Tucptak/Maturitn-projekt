@@ -69,6 +69,7 @@
         
         <div class="result-actions">
             <a href="{{ url_for('quiz.quiz_detail', quiz_id=quiz.id) }}" class="btn btn-outline">Zpět na kvíz</a>
+            <button onclick="exportResults()" class="btn btn-outline">Exportovat výsledky</button>
             <a href="{{ url_for('quiz.play_quiz', quiz_id=quiz.id) }}" class="btn btn-primary">Hrát znovu</a>
         </div>
     </div>

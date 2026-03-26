@@ -42,6 +42,40 @@
             </div>
         </div>
         
+        <!-- Sekce Úspěchy -->
+        <div class="profile-section">
+            <h2>🏆 Úspěchy</h2>
+            <div class="achievements-grid">
+                {% for ach in achievements_data %}
+                <div class="achievement-card {{ 'earned' if ach.earned else 'locked' }} tier-{{ ach.tier }}">
+                    <div class="achievement-icon-wrap">
+                        <img src="{{ url_for('static', filename='assets/achievements/' ~ ach.icon) }}" 
+                             alt="{{ ach.name }}" class="achievement-icon">
+                    </div>
+                    <div class="achievement-info">
+                        <span class="achievement-name">{{ ach.name }}</span>
+                        <span class="achievement-tier tier-label-{{ ach.tier }}">
+                            {% if ach.tier == 'gold' %}🥇 Zlatý
+                            {% elif ach.tier == 'silver' %}🥈 Stříbrný
+                            {% else %}🥉 Bronzový{% endif %}
+                        </span>
+                        <span class="achievement-desc">{{ ach.description }}</span>
+                        {% if ach.earned %}
+                            <span class="achievement-date">{{ ach.earned_at.strftime('%d.%m.%Y') }}</span>
+                        {% else %}
+                            <div class="achievement-progress">
+                                <div class="achievement-progress-bar">
+                                    <div class="achievement-progress-fill" style="width: {{ ach.percentage }}%"></div>
+                                </div>
+                                <span class="achievement-progress-text">{{ ach.current }} / {{ ach.target }}</span>
+                            </div>
+                        {% endif %}
+                    </div>
+                </div>
+                {% endfor %}
+            </div>
+        </div>
+        
         <div class="profile-section">
             <h2>Poslední hry</h2>
             
@@ -85,26 +119,7 @@
             {% endif %}
         </div>
         
-        <div class="profile-section">
-            <h2>Změna hesla</h2>
-            <form method="POST" action="{{ url_for('auth.change_password') }}" class="password-form">
-                <div class="form-row">
-                    <div class="form-group">
-                        <label for="current_password">Současné heslo</label>
-                        <input type="password" id="current_password" name="current_password" required>
-                    </div>
-                    <div class="form-group">
-                        <label for="new_password">Nové heslo</label>
-                        <input type="password" id="new_password" name="new_password" required minlength="6">
-                    </div>
-                    <div class="form-group">
-                        <label for="confirm_password">Potvrzení hesla</label>
-                        <input type="password" id="confirm_password" name="confirm_password" required>
-                    </div>
-                </div>
-                <button type="submit" class="btn btn-primary">Změnit heslo</button>
-            </form>
-        </div>
+
     </div>
 </div>
 {% endblock %}

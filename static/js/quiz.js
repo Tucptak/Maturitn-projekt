@@ -10,6 +10,7 @@ let timerInterval = null;
 let timeRemaining = 0;
 let totalTimeSpent = 0;
 let questionStartTime = 0;
+let lastResult = null;
 
 // DOM elementy
 const timerEl = document.getElementById('timer');
@@ -178,6 +179,10 @@ async function finishQuiz() {
         
         if (result.success) {
             showResults(result);
+            // Zobrazení achievement pop-upů, pokud byly získány
+            if (result.new_achievements && result.new_achievements.length > 0 && typeof showAchievementQueue === 'function') {
+                showAchievementQueue(result.new_achievements);
+            }
         } else {
             alert('Chyba při odesílání výsledků.');
         }
@@ -191,6 +196,7 @@ async function finishQuiz() {
  * Zobrazení výsledků
  */
 function showResults(result) {
+    lastResult = result;
     quizResults.style.display = 'block';
     
     document.getElementById('resultScore').textContent = `${result.percentage}%`;
@@ -216,6 +222,54 @@ function showResults(result) {
         `;
         resultsList.appendChild(div);
     });
+}
+
+/**
+ * Export výsledků do textového souboru
+ */
+function exportResults() {
+    if (!lastResult || !quizData) return;
+
+    const now = new Date();
+    const dateStr = now.toLocaleDateString('cs-CZ');
+    const timeStr = now.toLocaleTimeString('cs-CZ');
+
+    let text = `Výsledky kvízu: ${quizData.quiz_name}\n`;
+    text += `Datum: ${dateStr} ${timeStr}\n`;
+    text += `${'='.repeat(40)}\n\n`;
+    text += `Skóre: ${lastResult.score} / ${lastResult.max_score} (${lastResult.percentage}%)\n`;
+    text += `Čas: ${lastResult.time_spent} sekund\n\n`;
+    text += `${'='.repeat(40)}\n`;
+    text += `Přehled odpovědí:\n\n`;
+
+    lastResult.results.forEach((item, index) => {
+        text += `${index + 1}. ${item.question_text}\n`;
+        text += `   Vaše odpověď: ${item.selected_answer_text || 'Bez odpovědi'}\n`;
+        if (item.is_correct) {
+            text += `   ✓ Správně\n`;
+        } else {
+            text += `   ✗ Špatně — Správná odpověď: ${item.correct_answer_text}\n`;
+        }
+        text += `\n`;
+    });
+
+    const safeName = quizData.quiz_name
+        .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+        .replace(/[^a-zA-Z0-9]/g, '_')
+        .replace(/_+/g, '_')
+        .toLowerCase();
+    const fileDate = now.toISOString().slice(0, 10);
+    const fileName = `vysledky_${safeName}_${fileDate}.txt`;
+
+    const blob = new Blob([text], { type: 'text/plain;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
 }
 
 // Spuštění kvízu při načtení stránky

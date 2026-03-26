@@ -128,3 +128,33 @@ class UserAnswer(db.Model):
     answer_id = db.Column(db.Integer, db.ForeignKey('answers.id'), nullable=True)
     answer_text = db.Column(db.Text, nullable=True)
     is_correct = db.Column(db.Boolean, default=False)
+
+
+class Achievement(db.Model):
+    """Model definice úspěchu."""
+    __tablename__ = 'achievements'
+    
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    name = db.Column(db.String(200), nullable=False)
+    description = db.Column(db.String(500), nullable=False)
+    icon = db.Column(db.String(255), nullable=False, default='default.svg')
+    tier = db.Column(db.String(20), nullable=False, default='bronze')
+    category = db.Column(db.String(100), nullable=False, default='gameplay')
+    requirement_type = db.Column(db.String(100), nullable=False)
+    requirement_value = db.Column(db.Integer, nullable=False, default=1)
+    
+    user_achievements = db.relationship('UserAchievement', backref='achievement', lazy=True, cascade='all, delete-orphan')
+
+
+class UserAchievement(db.Model):
+    """Model získaného úspěchu uživatele."""
+    __tablename__ = 'user_achievements'
+    
+    id = db.Column(db.Integer, primary_key=True, autoincrement=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('users1.id'), nullable=False)
+    achievement_id = db.Column(db.Integer, db.ForeignKey('achievements.id'), nullable=False)
+    earned_at = db.Column(db.DateTime, default=datetime.utcnow)
+    
+    __table_args__ = (
+        db.UniqueConstraint('user_id', 'achievement_id', name='uq_user_achievement'),
+    )

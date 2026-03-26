@@ -13,7 +13,7 @@ from PyQt5.QtWidgets import (
     QApplication, QMainWindow, QWidget, QVBoxLayout, QHBoxLayout,
     QLabel, QPushButton, QLineEdit, QStackedWidget, QListWidget,
     QListWidgetItem, QMessageBox, QFrame, QProgressBar, QGridLayout,
-    QScrollArea, QComboBox, QSpacerItem, QSizePolicy
+    QScrollArea, QComboBox, QSpacerItem, QSizePolicy, QFileDialog
 )
 from PyQt5.QtCore import Qt, QTimer, pyqtSignal
 from PyQt5.QtGui import QFont, QPalette, QColor
@@ -55,15 +55,6 @@ class StyleSheet:
         QPushButton:disabled {
             background-color: #334155;
             color: #64748b;
-        }
-        QPushButton.secondary {
-            background-color: transparent;
-            border: 2px solid #334155;
-            color: #f8fafc;
-        }
-        QPushButton.secondary:hover {
-            border-color: #6366f1;
-            color: #6366f1;
         }
         QPushButton.answer {
             background-color: #1e293b;
@@ -137,16 +128,36 @@ class StyleSheet:
             padding: 10px 15px;
             color: #f8fafc;
         }
+        QComboBox:hover {
+            border-color: #6366f1;
+        }
         QComboBox:focus {
             border-color: #6366f1;
+        }
+        QComboBox:on {
+            border-color: #4338ca;
         }
         QComboBox::drop-down {
             border: none;
         }
         QComboBox QAbstractItemView {
             background-color: #1e293b;
-            border: 1px solid #334155;
-            selection-background-color: #6366f1;
+            border: 2px solid #334155;
+            padding: 4px 0px;
+            outline: none;
+            selection-background-color: rgba(99, 102, 241, 0.25);
+            selection-color: #f8fafc;
+            color: #f8fafc;
+        }
+        QComboBox QAbstractItemView::item {
+            padding: 10px 15px;
+            min-height: 20px;
+        }
+        QComboBox QAbstractItemView::item:hover {
+            background-color: rgba(99, 102, 241, 0.15);
+        }
+        QComboBox QAbstractItemView::item:selected {
+            background-color: rgba(99, 102, 241, 0.25);
         }
         QScrollArea {
             border: none;
@@ -382,13 +393,23 @@ class QuizListWidget(QWidget):
         header.addWidget(self.user_label)
         
         logout_btn = QPushButton("Odhlásit")
-        logout_btn.setProperty("class", "secondary")
         logout_btn.setStyleSheet("""
-            background-color: transparent;
-            border: 2px solid #334155;
-            color: #f8fafc;
-            padding: 8px 16px;
+            QPushButton {
+                background-color: transparent;
+                border: 2px solid #334155;
+                color: #f8fafc;
+                padding: 8px 16px;
+            }
+            QPushButton:hover {
+                border-color: #6366f1;
+                color: #6366f1;
+            }
+            QPushButton:pressed {
+                border-color: #4338ca;
+                color: #4338ca;
+            }
         """)
+        logout_btn.setCursor(Qt.PointingHandCursor)
         logout_btn.clicked.connect(self.logout_requested.emit)
         header.addWidget(logout_btn)
         
@@ -398,11 +419,13 @@ class QuizListWidget(QWidget):
         filters = QHBoxLayout()
         
         self.category_combo = QComboBox()
+        self.category_combo.setCursor(Qt.PointingHandCursor)
         self.category_combo.addItem("Všechny kategorie", "")
         self.category_combo.currentIndexChanged.connect(self.load_quizzes)
         filters.addWidget(self.category_combo)
         
         self.difficulty_combo = QComboBox()
+        self.difficulty_combo.setCursor(Qt.PointingHandCursor)
         self.difficulty_combo.addItem("Všechny obtížnosti", "")
         self.difficulty_combo.addItem("Lehký", "easy")
         self.difficulty_combo.addItem("Střední", "medium")
@@ -413,6 +436,7 @@ class QuizListWidget(QWidget):
         filters.addStretch()
         
         refresh_btn = QPushButton("🔄 Obnovit")
+        refresh_btn.setCursor(Qt.PointingHandCursor)
         refresh_btn.clicked.connect(self.load_quizzes)
         filters.addWidget(refresh_btn)
         
@@ -425,6 +449,7 @@ class QuizListWidget(QWidget):
         
         # Tlačítko pro hraní
         self.play_btn = QPushButton("🎮 Hrát vybraný kvíz")
+        self.play_btn.setCursor(Qt.PointingHandCursor)
         self.play_btn.setEnabled(False)
         self.play_btn.clicked.connect(self.play_selected)
         self.quiz_list.itemSelectionChanged.connect(
@@ -549,6 +574,10 @@ class QuizGameWidget(QWidget):
                     border-color: #6366f1;
                     background-color: rgba(99, 102, 241, 0.1);
                 }
+                QPushButton:pressed {
+                    border-color: #4338ca;
+                    background-color: rgba(99, 102, 241, 0.25);
+                }
             """)
             btn.setCursor(Qt.PointingHandCursor)
             btn.clicked.connect(lambda checked, idx=i: self.select_answer(idx))
@@ -562,10 +591,21 @@ class QuizGameWidget(QWidget):
         # Tlačítko zpět
         back_btn = QPushButton("← Ukončit kvíz")
         back_btn.setStyleSheet("""
-            background-color: transparent;
-            border: 2px solid #334155;
-            color: #f8fafc;
+            QPushButton {
+                background-color: transparent;
+                border: 2px solid #334155;
+                color: #f8fafc;
+            }
+            QPushButton:hover {
+                border-color: #6366f1;
+                color: #6366f1;
+            }
+            QPushButton:pressed {
+                border-color: #4338ca;
+                color: #4338ca;
+            }
         """)
+        back_btn.setCursor(Qt.PointingHandCursor)
         back_btn.clicked.connect(self.confirm_quit)
         layout.addWidget(back_btn)
         
@@ -618,6 +658,11 @@ class QuizGameWidget(QWidget):
                     }
                     QPushButton:hover {
                         border-color: #6366f1;
+                        background-color: rgba(99, 102, 241, 0.1);
+                    }
+                    QPushButton:pressed {
+                        border-color: #4338ca;
+                        background-color: rgba(99, 102, 241, 0.25);
                     }
                 """)
             else:
@@ -711,6 +756,8 @@ class ResultsWidget(QWidget):
     
     def __init__(self):
         super().__init__()
+        self.last_result = None
+        self.quiz_name = None
         self.init_ui()
     
     def init_ui(self):
@@ -756,14 +803,46 @@ class ResultsWidget(QWidget):
         
         back_btn = QPushButton("← Zpět na seznam")
         back_btn.setStyleSheet("""
-            background-color: transparent;
-            border: 2px solid #334155;
-            color: #f8fafc;
+            QPushButton {
+                background-color: transparent;
+                border: 2px solid #334155;
+                color: #f8fafc;
+            }
+            QPushButton:hover {
+                border-color: #6366f1;
+                color: #6366f1;
+            }
+            QPushButton:pressed {
+                border-color: #4338ca;
+                color: #4338ca;
+            }
         """)
+        back_btn.setCursor(Qt.PointingHandCursor)
         back_btn.clicked.connect(self.back_requested.emit)
         buttons.addWidget(back_btn)
         
+        export_btn = QPushButton("💾 Exportovat výsledky")
+        export_btn.setStyleSheet("""
+            QPushButton {
+                background-color: transparent;
+                border: 2px solid #334155;
+                color: #f8fafc;
+            }
+            QPushButton:hover {
+                border-color: #6366f1;
+                color: #6366f1;
+            }
+            QPushButton:pressed {
+                border-color: #4338ca;
+                color: #4338ca;
+            }
+        """)
+        export_btn.setCursor(Qt.PointingHandCursor)
+        export_btn.clicked.connect(self.export_results)
+        buttons.addWidget(export_btn)
+        
         replay_btn = QPushButton("🔄 Hrát znovu")
+        replay_btn.setCursor(Qt.PointingHandCursor)
         replay_btn.clicked.connect(self.replay_requested.emit)
         buttons.addWidget(replay_btn)
         
@@ -771,7 +850,9 @@ class ResultsWidget(QWidget):
         
         self.setLayout(layout)
     
-    def show_results(self, result):
+    def show_results(self, result, quiz_name=None):
+        self.last_result = result
+        self.quiz_name = quiz_name or 'kviz'
         self.score_label.setText(f"{result.get('percentage', 0)}%")
         self.details_label.setText(
             f"{result.get('score', 0)} z {result.get('max_score', 0)} správných odpovědí | "
@@ -812,6 +893,52 @@ class ResultsWidget(QWidget):
                 frame_layout.addWidget(correct)
             
             self.results_layout.addWidget(frame)
+    
+    def export_results(self):
+        """Export výsledků do textového souboru."""
+        if not self.last_result:
+            return
+        
+        result = self.last_result
+        now = datetime.now()
+        date_str = now.strftime('%d.%m.%Y')
+        time_str = now.strftime('%H:%M')
+        
+        text = f"Výsledky kvízu: {self.quiz_name}\n"
+        text += f"Datum: {date_str} {time_str}\n"
+        text += f"{'=' * 40}\n\n"
+        text += f"Skóre: {result.get('score', 0)} / {result.get('max_score', 0)} ({result.get('percentage', 0)}%)\n"
+        text += f"Čas: {result.get('time_spent', 0)} sekund\n\n"
+        text += f"{'=' * 40}\n"
+        text += "Přehled odpovědí:\n\n"
+        
+        for i, item in enumerate(result.get('results', [])):
+            text += f"{i + 1}. {item.get('question_text', '')}\n"
+            answer_text = item.get('selected_answer_text') or 'Bez odpovědi'
+            text += f"   Vaše odpověď: {answer_text}\n"
+            if item.get('is_correct'):
+                text += "   ✓ Správně\n"
+            else:
+                text += f"   ✗ Špatně — Správná odpověď: {item.get('correct_answer_text', '')}\n"
+            text += "\n"
+        
+        import unicodedata
+        import re
+        safe_name = unicodedata.normalize('NFD', self.quiz_name)
+        safe_name = safe_name.encode('ascii', 'ignore').decode('ascii')
+        safe_name = re.sub(r'[^a-zA-Z0-9]', '_', safe_name)
+        safe_name = re.sub(r'_+', '_', safe_name).strip('_').lower()
+        file_date = now.strftime('%Y-%m-%d')
+        default_name = f"vysledky_{safe_name}_{file_date}.txt"
+        
+        file_path, _ = QFileDialog.getSaveFileName(
+            self, "Exportovat výsledky", default_name,
+            "Textové soubory (*.txt);;Všechny soubory (*)"
+        )
+        
+        if file_path:
+            with open(file_path, 'w', encoding='utf-8') as f:
+                f.write(text)
 
 
 class MainWindow(QMainWindow):
@@ -910,7 +1037,8 @@ class MainWindow(QMainWindow):
         self.stack.setCurrentWidget(self.quiz_game_widget)
     
     def show_results(self, result):
-        self.results_widget.show_results(result)
+        quiz_name = self.current_quiz.get('name', 'kviz') if self.current_quiz else 'kviz'
+        self.results_widget.show_results(result, quiz_name)
         self.stack.setCurrentWidget(self.results_widget)
     
     def show_quiz_list(self):

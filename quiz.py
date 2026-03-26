@@ -1,6 +1,8 @@
 """
 Routy pro správu a hraní kvízů.
 """
+import csv
+import io
 import subprocess
 import sys
 import os
@@ -174,14 +176,175 @@ def submit_quiz(quiz_id):
     game_result.score = score
     db.session.commit()
     
+    # Kontrola achievementů
+    from achievements import check_achievements
+    new_achievements = check_achievements(current_user)
+    achievements_popup = [
+        {
+            'name': a.name,
+            'description': a.description,
+            'icon': a.icon,
+            'tier': a.tier,
+        }
+        for a in new_achievements
+    ]
+    
     return jsonify({
         'success': True,
         'score': score,
         'max_score': max_score,
         'percentage': round((score / max_score * 100) if max_score > 0 else 0, 1),
         'time_spent': time_spent,
-        'results': results
+        'results': results,
+        'new_achievements': achievements_popup
     })
+
+
+@quiz_bp.route('/quiz/import-csv', methods=['POST'])
+@login_required
+def import_csv():
+    """Import kvízu z CSV souboru."""
+    csv_file = request.files.get('csv_file')
+    if not csv_file or not csv_file.filename:
+        flash('Nebyl vybrán žádný soubor.', 'error')
+        return redirect(url_for('quiz.create_quiz'))
+
+    if not csv_file.filename.lower().endswith('.csv'):
+        flash('Soubor musí být ve formátu CSV.', 'error')
+        return redirect(url_for('quiz.create_quiz'))
+
+    # Limit 1MB
+    csv_file.seek(0, 2)
+    size = csv_file.tell()
+    csv_file.seek(0)
+    if size > 1_048_576:
+        flash('Soubor je příliš velký (max 1 MB).', 'error')
+        return redirect(url_for('quiz.create_quiz'))
+
+    # Read and decode
+    raw = csv_file.read()
+    # Handle UTF-8 BOM
+    if raw[:3] == b'\xef\xbb\xbf':
+        raw = raw[3:]
+    try:
+        text = raw.decode('utf-8')
+    except UnicodeDecodeError:
+        text = raw.decode('latin-1')
+
+    reader = csv.reader(io.StringIO(text))
+    rows = list(reader)
+
+    if len(rows) < 2:
+        flash('CSV soubor musí obsahovat hlavičku a alespoň jeden řádek s otázkou.', 'error')
+        return redirect(url_for('quiz.create_quiz'))
+
+    # Extract metadata rows before the question header
+    csv_metadata = {}
+    header_index = 0
+    metadata_keys = {'name', 'category', 'difficulty', 'time_limit'}
+
+    for i, row in enumerate(rows):
+        if len(row) >= 1 and row[0].strip().lower() == 'question':
+            header_index = i
+            break
+        if len(row) == 2 and row[0].strip().lower() in metadata_keys:
+            csv_metadata[row[0].strip().lower()] = row[1].strip()
+
+    data_rows = rows[header_index + 1:]
+
+    # Parse questions
+    valid_correct = {'a': 0, 'b': 1, 'c': 2, 'd': 3}
+    questions_data = []
+    errors = []
+
+    for i, row in enumerate(data_rows, start=2):
+        if len(row) < 6:
+            errors.append(f'Řádek {i}: nedostatek sloupců (potřeba 6, nalezeno {len(row)})')
+            continue
+
+        q_text = row[0].strip()
+        answers = [row[1].strip(), row[2].strip(), row[3].strip(), row[4].strip()]
+        correct_letter = row[5].strip().lower()
+
+        if not q_text:
+            errors.append(f'Řádek {i}: prázdný text otázky')
+            continue
+        if any(not a for a in answers):
+            errors.append(f'Řádek {i}: některá odpověď je prázdná')
+            continue
+        if correct_letter not in valid_correct:
+            errors.append(f'Řádek {i}: neplatná správná odpověď "{row[5].strip()}" (povoleno A/B/C/D)')
+            continue
+
+        correct_idx = valid_correct[correct_letter]
+        questions_data.append({
+            'text': q_text,
+            'answers': [
+                {'text': answers[j], 'is_correct': j == correct_idx}
+                for j in range(4)
+            ]
+        })
+
+    if errors:
+        flash('Chyby v CSV: ' + '; '.join(errors[:5]), 'error')
+        if not questions_data:
+            return redirect(url_for('quiz.create_quiz'))
+
+    # Quiz metadata: form fields > CSV metadata > defaults
+    name = request.form.get('name', '').strip()
+    if not name or len(name) < 3:
+        name = csv_metadata.get('name', '').strip()
+    if not name or len(name) < 3:
+        name = os.path.splitext(csv_file.filename)[0]
+        if len(name) < 3:
+            name = 'Importovaný kvíz'
+
+    category = request.form.get('category', '').strip()
+    if not category:
+        category = csv_metadata.get('category', '').strip() or 'Všeobecné znalosti'
+
+    difficulty = request.form.get('difficulty', '').strip()
+    if difficulty not in ('easy', 'medium', 'hard'):
+        difficulty = csv_metadata.get('difficulty', '').strip().lower()
+    if difficulty not in ('easy', 'medium', 'hard'):
+        difficulty = 'medium'
+
+    time_limit = request.form.get('time_limit', 0, type=int)
+    if time_limit < 5 or time_limit > 120:
+        csv_tl = csv_metadata.get('time_limit', '')
+        time_limit = int(csv_tl) if csv_tl.isdigit() and 5 <= int(csv_tl) <= 120 else 30
+
+    # Create quiz + questions in single transaction
+    quiz = Quiz(
+        name=name,
+        category=category,
+        difficulty=difficulty,
+        time_limit=time_limit,
+        author_id=current_user.id
+    )
+    db.session.add(quiz)
+    db.session.flush()
+
+    for q_data in questions_data:
+        question = Question(quiz_id=quiz.id, text=q_data['text'])
+        db.session.add(question)
+        db.session.flush()
+        for ans in q_data['answers']:
+            db.session.add(Answer(
+                question_id=question.id,
+                text=ans['text'],
+                is_correct=ans['is_correct']
+            ))
+
+    db.session.commit()
+
+    from achievements import check_achievements
+    new_achievements = check_achievements(current_user)
+    for ach in new_achievements:
+        flash(f'achievement:{ach.name}|{ach.icon}|{ach.tier}', 'achievement')
+
+    flash(f'Kvíz byl importován s {len(questions_data)} otázkami.', 'success')
+    return redirect(url_for('quiz.edit_quiz', quiz_id=quiz.id))
 
 
 @quiz_bp.route('/quiz/create', methods=['GET', 'POST'])
@@ -213,6 +376,12 @@ def create_quiz():
         )
         db.session.add(quiz)
         db.session.commit()
+        
+        # Kontrola achievementů po vytvoření kvízu
+        from achievements import check_achievements
+        new_achievements = check_achievements(current_user)
+        for ach in new_achievements:
+            flash(f'achievement:{ach.name}|{ach.icon}|{ach.tier}', 'achievement')
         
         flash('Kvíz byl vytvořen! Nyní přidejte otázky.', 'success')
         return redirect(url_for('quiz.edit_quiz', quiz_id=quiz.id))

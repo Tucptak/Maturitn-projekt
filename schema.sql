@@ -92,3 +92,33 @@ CREATE TABLE IF NOT EXISTS user_answers (
     FOREIGN KEY (answer_id) REFERENCES answers(id) ON DELETE SET NULL,
     INDEX idx_game (game_id)
 ) ENGINE=InnoDB;
+
+-- Tabulka definic úspěchů
+CREATE TABLE IF NOT EXISTS achievements (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(200) NOT NULL,
+    description VARCHAR(500) NOT NULL,
+    icon VARCHAR(255) NOT NULL DEFAULT 'default.svg',
+    tier VARCHAR(20) NOT NULL DEFAULT 'bronze',
+    category VARCHAR(100) NOT NULL DEFAULT 'gameplay',
+    requirement_type VARCHAR(100) NOT NULL,
+    requirement_value INT NOT NULL DEFAULT 1,
+    
+    INDEX idx_tier (tier),
+    INDEX idx_category (category),
+    INDEX idx_requirement (requirement_type)
+) ENGINE=InnoDB;
+
+-- Tabulka získaných úspěchů uživatelů
+CREATE TABLE IF NOT EXISTS user_achievements (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    user_id INT NOT NULL,
+    achievement_id INT NOT NULL,
+    earned_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+    
+    FOREIGN KEY (user_id) REFERENCES users1(id) ON DELETE CASCADE,
+    FOREIGN KEY (achievement_id) REFERENCES achievements(id) ON DELETE CASCADE,
+    UNIQUE KEY uq_user_achievement (user_id, achievement_id),
+    INDEX idx_user (user_id),
+    INDEX idx_achievement (achievement_id)
+) ENGINE=InnoDB;

@@ -16,6 +16,11 @@ app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev-secret-key-change-in-pro
 from database import init_db, db
 init_db(app)
 
+# Seed achievementů
+with app.app_context():
+    from achievements import seed_achievements
+    seed_achievements()
+
 # Inicializace přihlašování
 from auth import auth_bp, login_manager
 login_manager.init_app(app)
