@@ -1,4 +1,4 @@
--- QuizApp Database Schema
+-- Braniac Database Schema
 -- MySQL / MariaDB
 -- Maturitní projekt 2026
 

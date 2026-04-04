@@ -1,7 +1,5 @@
 {% extends 'base.html' %}
 
-{% block title %}Upravit: {{ quiz.name }} - QuizApp{% endblock %}
-
 {% block content %}
 <div class="container">
     <div class="page-header">
@@ -301,7 +299,6 @@ function showEditQuestionModal(questionId, text, answers, correctFlags) {
     document.getElementById('editAnswerC').value = answers[2] || '';
     document.getElementById('editAnswerD').value = answers[3] || '';
     
-    // Nastavení správné odpovědi
     const correctIndex = correctFlags.indexOf(true);
     if (correctIndex >= 0) {
         document.querySelectorAll('input[name="edit_correct"]')[correctIndex].checked = true;
@@ -352,7 +349,6 @@ async function editQuestion(event) {
     }
 }
 
-// Zavření modalu kliknutím mimo
 document.getElementById('addQuestionModal').addEventListener('click', function(e) {
     if (e.target === this) hideAddQuestionModal();
 });

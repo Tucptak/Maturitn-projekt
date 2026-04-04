@@ -7,6 +7,12 @@ from flask_login import UserMixin
 from database import db
 
 
+def pct(v):
+    """Round to 1 decimal, drop .0 when unnecessary."""
+    r = round(v, 1)
+    return int(r) if r == int(r) else r
+
+
 class User(UserMixin, db.Model):
     """Model uživatele."""
     __tablename__ = 'users1'
@@ -52,8 +58,8 @@ class User(UserMixin, db.Model):
         ]
         return {
             'total_games': total_games,
-            'average_score': round(sum(scores) / len(scores), 1),
-            'best_score': round(max(scores), 1),
+            'average_score': pct(sum(scores) / len(scores)),
+            'best_score': pct(max(scores)),
             'total_quizzes_created': len(self.quizzes)
         }
 

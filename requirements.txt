@@ -1,4 +1,4 @@
-# QuizApp - Python Dependencies
+# Braniac - Python Dependencies
 # Instalace: pip install -r requirements.txt
 
 # Flask a rozšíření

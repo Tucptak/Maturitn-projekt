@@ -92,11 +92,9 @@
                         </thead>
                         <tbody>
                             {% for game in recent_games %}
-                                <tr>
+                                <tr class="clickable-row" onclick="window.location='{{ url_for('quiz.attempt_detail', game_id=game.id) }}'">
                                     <td>
-                                        <a href="{{ url_for('quiz.quiz_detail', quiz_id=game.quiz_id) }}">
-                                            {{ game.quiz.name }}
-                                        </a>
+                                        {{ game.quiz.name }}
                                     </td>
                                     <td>
                                         <span class="score-badge 
@@ -104,7 +102,7 @@
                                             {% elif game.score / game.max_score >= 0.5 %}score-ok
                                             {% else %}score-bad{% endif %}">
                                             {{ game.score }}/{{ game.max_score }}
-                                            ({{ (game.score / game.max_score * 100)|round|int }}%)
+                                            {% set gp = (game.score / game.max_score * 100)|round(1) %}({{ gp|int if gp == gp|int else gp }}%)
                                         </span>
                                     </td>
                                     <td>{{ game.time_spent }}s</td>

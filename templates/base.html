@@ -3,7 +3,8 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}QuizApp{% endblock %}</title>
+    <title>Braniac</title>
+    <link rel="icon" type="image/svg+xml" href="{{ url_for('static', filename='assets/favicon.svg') }}">
     <link rel="stylesheet" href="{{ url_for('static', filename='css/main.css') }}">
     {% block extra_css %}{% endblock %}
 </head>
@@ -11,14 +12,15 @@
     <nav class="navbar">
         <div class="nav-container">
             <a href="{{ url_for('index') }}" class="nav-logo">
-                <span class="logo-icon">🎯</span>
-                <span class="logo-text">QuizApp</span>
+                <span class="logo-icon">🧠</span>
+                <span class="logo-text">Braniac</span>
             </a>
             
             <ul class="nav-menu">
                 <li><a href="{{ url_for('index') }}" class="nav-link">Domů</a></li>
                 <li><a href="{{ url_for('quiz.list_quizzes') }}" class="nav-link">Kvízy</a></li>
                 <li><a href="{{ url_for('quiz.leaderboard') }}" class="nav-link">Žebříček</a></li>
+                <li><a href="{{ url_for('stats.global_stats') }}" class="nav-link">Statistiky</a></li>
                 
                 {% if current_user.is_authenticated %}
                     <li><a href="{{ url_for('quiz.my_quizzes') }}" class="nav-link">Moje kvízy</a></li>
@@ -75,7 +77,7 @@
 
     <footer class="footer">
         <div class="footer-container">
-            <p>&copy; 2026 QuizApp - Maturitní projekt</p>
+            <p>&copy; 2026 Braniac - Maturitní projekt</p>
         </div>
     </footer>
 

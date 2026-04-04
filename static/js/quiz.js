@@ -1,5 +1,5 @@
 /**
- * QuizApp - Logika hraní kvízu
+ * Braniac - Logika hraní kvízu
  */
 
 // Stav hry
@@ -238,7 +238,7 @@ function exportResults() {
     text += `Datum: ${dateStr} ${timeStr}\n`;
     text += `${'='.repeat(40)}\n\n`;
     text += `Skóre: ${lastResult.score} / ${lastResult.max_score} (${lastResult.percentage}%)\n`;
-    text += `Čas: ${lastResult.time_spent} sekund\n\n`;
+    text += `ÄŒas: ${lastResult.time_spent} sekund\n\n`;
     text += `${'='.repeat(40)}\n`;
     text += `Přehled odpovědí:\n\n`;
 

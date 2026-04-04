@@ -1,0 +1,166 @@
+{% extends 'base.html' %}
+
+{% block title %}Statistiky – {{ target_user.name }} – Braniac{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="stats-dashboard">
+
+        <!-- User header -->
+        <div class="stats-user-header">
+            <div class="suh-avatar">
+                {% if target_user.avatar and target_user.avatar != 'default.png' %}
+                    <img src="{{ url_for('static', filename='assets/' ~ target_user.avatar) }}" alt="" class="avatar-large avatar-img">
+                {% else %}
+                    <span class="avatar-large">{{ target_user.name[0].upper() }}</span>
+                {% endif %}
+            </div>
+            <div class="suh-info">
+                <h1>{{ target_user.name }}</h1>
+                <p class="text-muted">Podrobné statistiky hráče</p>
+            </div>
+            <div class="suh-actions">
+                {% if current_user.is_authenticated and current_user.id == target_user.id %}
+                    <a href="{{ url_for('auth.profile') }}" class="btn btn-outline btn-sm">← Profil</a>
+                {% endif %}
+                <a href="{{ url_for('stats.global_stats') }}" class="btn btn-outline btn-sm">📊 Komunita</a>
+            </div>
+        </div>
+
+        <!-- Filters -->
+        <form class="stats-filters" method="GET" action="{{ url_for('stats.user_stats', user_id=target_user.id) }}">
+            <div class="sf-group">
+                <label>Období</label>
+                <select name="period" onchange="this.form.submit()">
+                    <option value="today"{{ ' selected' if period=='today' }}>Dnes</option>
+                    <option value="7d"{{ ' selected' if period=='7d' }}>7 dní</option>
+                    <option value="30d"{{ ' selected' if period=='30d' }}>30 dní</option>
+                    <option value="all"{{ ' selected' if period=='all' }}>Vše</option>
+                </select>
+            </div>
+            <div class="sf-group">
+                <label>Kategorie</label>
+                <select name="category" onchange="this.form.submit()">
+                    <option value="">Všechny</option>
+                    {% for c in categories %}
+                        <option value="{{ c }}"{{ ' selected' if category==c }}>{{ c }}</option>
+                    {% endfor %}
+                </select>
+            </div>
+        </form>
+
+        <!-- Milestone cards -->
+        <div class="stats-counters stats-counters-4">
+            <div class="stats-counter">
+                <span class="sc-value">{{ streaks.total_games }}</span>
+                <span class="sc-label">Odehraných her</span>
+            </div>
+            <div class="stats-counter">
+                <span class="sc-value">{{ streaks.total_correct }}</span>
+                <span class="sc-label">Správných odpovědí</span>
+            </div>
+            <div class="stats-counter">
+                <span class="sc-value">{{ streaks.longest_perfect_streak }}</span>
+                <span class="sc-label">🔥 Nejdelší perfektní série</span>
+            </div>
+            <div class="stats-counter">
+                <span class="sc-value">{% set acc = (streaks.total_correct / streaks.total_answered * 100)|round(1) if streaks.total_answered > 0 else 0 %}{{ acc|int if acc == acc|int else acc }}%</span>
+                <span class="sc-label">Celková přesnost</span>
+            </div>
+        </div>
+
+        <!-- Charts grid -->
+        <div class="stats-grid">
+            <div class="stats-main">
+                <!-- Comparison trend -->
+                <div class="stats-card">
+                    <h3>📈 Můj trend vs. průměr komunity</h3>
+                    <div class="chart-wrap"><canvas id="comparisonChart"></canvas></div>
+                    <p class="stats-hint">Porovnání vašeho průměrného skóre s globálním průměrem v čase.</p>
+                </div>
+
+                <!-- Scatter: accuracy vs speed -->
+                <div class="stats-card">
+                    <h3>🎯 Přesnost vs. rychlost</h3>
+                    <div class="chart-wrap"><canvas id="scatterChart"></canvas></div>
+                    <p class="stats-hint">Každý bod = jeden pokus. X = průměrný čas na otázku (s), Y = skóre (%). Rychlost odhadnuta z celkového času pokusu.</p>
+                </div>
+
+                <!-- Hardest questions -->
+                <div class="stats-card">
+                    <h3>🧠 Nejtěžší otázky</h3>
+                    {% if hardest %}
+                    <div class="stats-table-wrap">
+                        <table class="stats-table">
+                            <thead>
+                                <tr>
+                                    <th>Otázka</th>
+                                    <th>Kvíz</th>
+                                    <th>Kategorie</th>
+                                    <th>Chybovost</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for q in hardest %}
+                                <tr>
+                                    <td>{{ q.text|truncate(80) }}</td>
+                                    <td>{{ q.quiz }}</td>
+                                    <td><span class="cat-badge">{{ q.category }}</span></td>
+                                    <td><span class="wrong-badge">{{ q.wrong_rate }}%</span></td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <p class="stats-empty">Zatím žádné chybné odpovědi – skvělé!</p>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Sidebar -->
+            <div class="stats-sidebar">
+                <!-- Mastery -->
+                <div class="stats-card">
+                    <h3>🏅 Znalost kategorií</h3>
+                    <div class="chart-wrap"><canvas id="masteryChart"></canvas></div>
+                    <p class="stats-hint">Na základě min. 2 pokusů v kategorii.</p>
+                </div>
+
+                <!-- Personal bests -->
+                <div class="stats-card">
+                    <h3>🏆 Osobní rekordy</h3>
+                    {% if personal_bests %}
+                    <div class="pb-list">
+                        {% for pb in personal_bests %}
+                        <div class="pb-item">
+                            <span class="pb-cat">{{ pb.category }}</span>
+                            <div class="pb-vals">
+                                <span class="pb-score" title="{{ pb.best_quiz }} – {{ pb.best_date }}">🎯 {{ pb.best_pct }}%</span>
+                                <span class="pb-time" title="{{ pb.fast_quiz }} – {{ pb.fast_date }}">⚡ {{ pb.fastest }}s</span>
+                            </div>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <p class="stats-empty">Zatím žádné výsledky.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<script>
+    window.statsData = {
+        scatter: {{ scatter | tojson }},
+        mastery: {{ mastery | tojson }},
+        comparison: {{ comparison | tojson }}
+    };
+</script>
+<script src="{{ url_for('static', filename='js/stats.js') }}"></script>
+{% endblock %}

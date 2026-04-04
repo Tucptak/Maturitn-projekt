@@ -1,0 +1,164 @@
+{% extends 'base.html' %}
+
+{% block title %}Statistiky – Braniac{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="stats-dashboard">
+
+        <!-- Header + Filters -->
+        <div class="stats-header">
+            <h1>📊 Statistiky komunity</h1>
+            <form class="stats-filters" method="GET" action="{{ url_for('stats.global_stats') }}">
+                <div class="sf-group">
+                    <label>Období</label>
+                    <select name="period" onchange="this.form.submit()">
+                        <option value="today"{{ ' selected' if period=='today' }}>Dnes</option>
+                        <option value="7d"{{ ' selected' if period=='7d' }}>7 dní</option>
+                        <option value="30d"{{ ' selected' if period=='30d' }}>30 dní</option>
+                        <option value="all"{{ ' selected' if period=='all' }}>Vše</option>
+                    </select>
+                </div>
+                <div class="sf-group">
+                    <label>Kategorie</label>
+                    <select name="category" onchange="this.form.submit()">
+                        <option value="">Všechny</option>
+                        {% for c in categories %}
+                            <option value="{{ c }}"{{ ' selected' if category==c }}>{{ c }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+            </form>
+        </div>
+
+        <!-- Counter cards -->
+        <div class="stats-counters">
+            <div class="stats-counter">
+                <span class="sc-value">{{ counters.total_games }}</span>
+                <span class="sc-label">Odehraných her</span>
+            </div>
+            <div class="stats-counter">
+                <span class="sc-value">{{ counters.total_players }}</span>
+                <span class="sc-label">Aktivních hráčů</span>
+            </div>
+            <div class="stats-counter">
+                <span class="sc-value">{{ counters.total_correct }}</span>
+                <span class="sc-label">Správných odpovědí</span>
+            </div>
+        </div>
+
+        <!-- Main grid -->
+        <div class="stats-grid">
+            <!-- Left: main charts -->
+            <div class="stats-main">
+                <div class="stats-card">
+                    <h3>📈 Trend průměrného skóre</h3>
+                    <div class="chart-wrap"><canvas id="trendChart"></canvas></div>
+                    <p class="stats-hint">Průměrné skóre komunity v čase – ukazuje, zda se hráči zlepšují.</p>
+                </div>
+
+                <div class="stats-card">
+                    <h3>📊 Rozložení výsledků</h3>
+                    <div class="chart-wrap"><canvas id="distChart"></canvas></div>
+                    <p class="stats-hint">Histogram z reálných dat – najděte, zda je vaše skóre nadprůměrné.</p>
+                </div>
+
+                <div class="stats-card">
+                    <h3>🧠 Nejtěžší otázky</h3>
+                    {% if hardest %}
+                    <div class="stats-table-wrap">
+                        <table class="stats-table">
+                            <thead>
+                                <tr>
+                                    <th>Otázka</th>
+                                    <th>Kvíz</th>
+                                    <th>Kategorie</th>
+                                    <th>Chybovost</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for q in hardest %}
+                                <tr>
+                                    <td>{{ q.text|truncate(80) }}</td>
+                                    <td>{{ q.quiz }}</td>
+                                    <td><span class="cat-badge">{{ q.category }}</span></td>
+                                    <td><span class="wrong-badge">{{ q.wrong_rate }}%</span></td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <p class="stats-empty">Zatím nejsou dostatečná data (min. 3 pokusy na otázku).</p>
+                    {% endif %}
+                </div>
+            </div>
+
+            <!-- Right: sidebar -->
+            <div class="stats-sidebar">
+                <div class="stats-card">
+                    <h3>🏆 Skóre podle kategorií</h3>
+                    <div class="chart-wrap chart-square"><canvas id="catBarChart"></canvas></div>
+                    <p class="stats-hint">Top kategorie seřazené podle průměrného skóre.</p>
+                </div>
+
+                <div class="stats-card">
+                    <h3>🔥 Populární kategorie</h3>
+                    {% if hot_topics %}
+                    <ul class="hot-list">
+                        {% for h in hot_topics %}
+                        <li class="hot-item">
+                            <span class="hot-name">{{ h.category }}</span>
+                            <span class="hot-count">{{ h.count }} her</span>
+                        </li>
+                        {% endfor %}
+                    </ul>
+                    {% else %}
+                    <p class="stats-empty">Žádná data pro vybrané období.</p>
+                    {% endif %}
+                </div>
+
+                <div class="stats-card stats-card-feed">
+                    <h3>⚡ Poslední aktivity</h3>
+                    {% if feed %}
+                    <div class="feed-list">
+                        {% for f in feed %}
+                        <a href="{{ url_for('stats.user_stats', user_id=f.user_id) }}" class="feed-item">
+                            {% if f.user_avatar and f.user_avatar != 'default.png' %}
+                                <img src="{{ url_for('static', filename='assets/' ~ f.user_avatar) }}" class="feed-avatar feed-avatar-img" alt="">
+                            {% else %}
+                                <span class="feed-avatar">{{ f.user_initial }}</span>
+                            {% endif %}
+                            <div class="feed-body">
+                                <span class="feed-name">{{ f.user_name }}</span>
+                                <span class="feed-quiz">{{ f.quiz_name }}</span>
+                            </div>
+                            <div class="feed-meta">
+                                <span class="feed-score {% if f.score_pct >= 80 %}score-good{% elif f.score_pct >= 50 %}score-ok{% else %}score-bad{% endif %}">{{ f.score_pct }}%</span>
+                                <span class="feed-time">{{ f.time_spent }}s · {{ f.date }}</span>
+                            </div>
+                        </a>
+                        {% endfor %}
+                    </div>
+                    {% else %}
+                    <p class="stats-empty">Žádné nedávné aktivity.</p>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<script>
+    window.statsData = {
+        distribution: {{ distribution | tojson }},
+        cat_bars: {{ cat_bars | tojson }},
+        trend: {{ trend | tojson }}
+    };
+</script>
+<script src="{{ url_for('static', filename='js/stats.js') }}"></script>
+{% endblock %}

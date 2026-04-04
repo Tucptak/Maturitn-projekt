@@ -1,14 +1,97 @@
 {% extends 'base.html' %}
 
-{% block title %}Žebříček - QuizApp{% endblock %}
+{% block title %}Žebříček - Braniac{% endblock %}
 
 {% block content %}
 <div class="container">
     <div class="page-header">
         <h1>🏆 Žebříček hráčů</h1>
-        <p>Nejlepší hráči podle průměrného skóre</p>
+        <p>
+            {% if quiz_id and selected_quiz %}
+                Nejlepší výsledky pro kvíz "{{ selected_quiz.name }}"
+            {% elif mode == 'overall' %}Skóre podle poměru správných odpovědí
+            {% elif mode == 'activity' %}Nejvíce odehraných kvízů
+            {% elif mode == 'perfects' %}Nejvíce dokončení se 100 % skóre
+            {% elif mode == 'speed' %}Nejrychlejší průměrný čas na otázku (min. 30 % skóre)
+            {% endif %}
+        </p>
     </div>
-    
+
+    {# ── Mode tabs (hidden when specific quiz selected) ── #}
+    {% if not quiz_id %}
+    <div class="leaderboard-tabs">
+        <a href="{{ url_for('quiz.leaderboard', mode='overall', difficulty=difficulty, period=period) }}"
+           class="leaderboard-tab {% if mode == 'overall' %}active{% endif %}">🧠 Skóre</a>
+        <a href="{{ url_for('quiz.leaderboard', mode='activity', difficulty=difficulty, period=period) }}"
+           class="leaderboard-tab {% if mode == 'activity' %}active{% endif %}">📊 Aktivita</a>
+        <a href="{{ url_for('quiz.leaderboard', mode='perfects', difficulty=difficulty, period=period) }}"
+           class="leaderboard-tab {% if mode == 'perfects' %}active{% endif %}">💯 Perfektní</a>
+        <a href="{{ url_for('quiz.leaderboard', mode='speed', difficulty=difficulty, period=period) }}"
+           class="leaderboard-tab {% if mode == 'speed' %}active{% endif %}">⚡ Rychlost</a>
+    </div>
+    {% endif %}
+
+    {# ── Period tabs ── #}
+    <div class="leaderboard-tabs leaderboard-period-tabs">
+        <a href="{{ url_for('quiz.leaderboard', mode=mode, difficulty=difficulty, period='daily', quiz_id=quiz_id or '') }}"
+           class="leaderboard-tab leaderboard-tab-sm {% if period == 'daily' %}active{% endif %}">📅 Denní</a>
+        <a href="{{ url_for('quiz.leaderboard', mode=mode, difficulty=difficulty, period='weekly', quiz_id=quiz_id or '') }}"
+           class="leaderboard-tab leaderboard-tab-sm {% if period == 'weekly' %}active{% endif %}">📆 Týdenní</a>
+        <a href="{{ url_for('quiz.leaderboard', mode=mode, difficulty=difficulty, period='alltime', quiz_id=quiz_id or '') }}"
+           class="leaderboard-tab leaderboard-tab-sm {% if period == 'alltime' %}active{% endif %}">🏅 Celkové</a>
+    </div>
+
+    {# ── Filters ── #}
+    <div class="filters">
+        <form method="GET" class="filter-form">
+            <input type="hidden" name="mode" value="{{ mode }}">
+            <input type="hidden" name="period" value="{{ period }}">
+
+            <div class="filter-group">
+                <label for="leaderboard-search">Hledat hráče</label>
+                <input type="text" id="leaderboard-search" placeholder="Jméno hráče…"
+                       class="leaderboard-search" autocomplete="off">
+            </div>
+
+            {% if not quiz_id %}
+            <div class="filter-group" style="position: relative;">
+                <label>Obtížnost</label>
+                <input type="hidden" name="difficulty" id="difficulty-value" value="{{ difficulty or '' }}">
+                <div class="custom-select" id="difficulty-select">
+                    <div class="custom-select-trigger" id="difficulty-trigger">
+                        {% if difficulty == 'easy' %}Lehký{% elif difficulty == 'medium' %}Střední{% elif difficulty == 'hard' %}Těžký{% else %}Všechny obtížnosti{% endif %}
+                        <span class="custom-select-arrow">▾</span>
+                    </div>
+                    <div class="custom-select-dropdown" id="difficulty-dropdown">
+                        <div class="custom-select-option{% if not difficulty %} selected{% endif %}" data-value="">Všechny obtížnosti</div>
+                        <div class="custom-select-option{% if difficulty == 'easy' %} selected{% endif %}" data-value="easy">Lehký</div>
+                        <div class="custom-select-option{% if difficulty == 'medium' %} selected{% endif %}" data-value="medium">Střední</div>
+                        <div class="custom-select-option{% if difficulty == 'hard' %} selected{% endif %}" data-value="hard">Těžký</div>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
+            <div class="filter-group" style="position: relative;">
+                <label for="quiz-search">Konkrétní kvíz</label>
+                <input type="text" id="quiz-search"
+                       placeholder="Hledat kvíz…" class="leaderboard-search" autocomplete="off"
+                       value="{% if selected_quiz %}{{ selected_quiz.name }}{% endif %}">
+                <input type="hidden" name="quiz_id" id="quiz-search-id" value="{{ quiz_id or '' }}">
+                <div class="quiz-search-dropdown" id="quiz-search-dropdown">
+                    {% for q in all_quizzes %}
+                        <div class="quiz-search-option" data-id="{{ q.id }}" data-name="{{ q.name }}">{{ q.name }}</div>
+                    {% endfor %}
+                </div>
+            </div>
+
+            {% if difficulty or quiz_id %}
+                <a href="{{ url_for('quiz.leaderboard', mode=mode, period=period) }}" class="btn btn-outline btn-sm">Zrušit filtry</a>
+            {% endif %}
+        </form>
+    </div>
+
+    {# ── Leaderboard table ── #}
     {% if leaderboard %}
         <div class="leaderboard-table">
             <table>
@@ -16,14 +99,30 @@
                     <tr>
                         <th>Pořadí</th>
                         <th>Hráč</th>
-                        <th>Průměrné skóre</th>
-                        <th>Odehraných her</th>
+                        {% if quiz_id %}
+                            <th>Skóre</th>
+                            <th>Čas</th>
+                        {% elif mode == 'overall' %}
+                            <th>Průměrné skóre</th>
+                            <th>Odehraných her</th>
+                        {% elif mode == 'activity' %}
+                            <th>Odehraných her</th>
+                            <th>Průměrné skóre</th>
+                        {% elif mode == 'perfects' %}
+                            <th>Perfektních výsledků</th>
+                            <th>Průměrné skóre</th>
+                        {% elif mode == 'speed' %}
+                            <th>Průměrný čas / otázku</th>
+                            <th>Počet her</th>
+                            <th>Průměrné skóre</th>
+                        {% endif %}
                     </tr>
                 </thead>
-                <tbody>
+                <tbody id="leaderboard-body">
                     {% for item in leaderboard %}
-                        <tr class="{% if item.rank <= 3 %}top-rank rank-{{ item.rank }}{% endif %}
-                                  {% if current_user.is_authenticated and item.user.id == current_user.id %}current-user{% endif %}">
+                        <tr data-name="{{ item.user.name|lower }}"
+                            class="{% if item.rank <= 3 %}top-rank rank-{{ item.rank }}{% endif %}
+                                   {% if current_user.is_authenticated and item.user.id == current_user.id %}current-user{% endif %}">
                             <td class="rank-cell">
                                 {% if item.rank == 1 %}🥇
                                 {% elif item.rank == 2 %}🥈
@@ -32,25 +131,119 @@
                                 {% endif %}
                             </td>
                             <td class="player-cell">
-                                <span class="player-avatar">{{ item.user.name[0].upper() }}</span>
-                                <span class="player-name">{{ item.user.name }}</span>
+                                {% if item.user.avatar and item.user.avatar != 'default.png' %}
+                                    <img src="{{ url_for('static', filename='assets/' ~ item.user.avatar) }}" alt="" class="player-avatar player-avatar-img">
+                                {% else %}
+                                    <span class="player-avatar">{{ item.user.name[0].upper() }}</span>
+                                {% endif %}
+                                <span class="player-name clickable" data-user-id="{{ item.user.id }}">{{ item.user.name }}</span>
                             </td>
-                            <td class="score-cell">
-                                <span class="score-value">{{ item.avg_score }}%</span>
-                            </td>
-                            <td class="games-cell">{{ item.games_played }}</td>
+
+                            {% if quiz_id %}
+                                <td class="score-cell"><span class="score-value">{{ item.primary }}%</span></td>
+                                <td class="games-cell">{{ item.secondary }}s</td>
+                            {% elif mode == 'overall' %}
+                                <td class="score-cell"><span class="score-value">{{ item.primary }}%</span></td>
+                                <td class="games-cell">{{ item.secondary }}</td>
+                            {% elif mode == 'activity' %}
+                                <td class="score-cell"><span class="score-value">{{ item.primary }}</span></td>
+                                <td class="games-cell">{{ item.secondary }}%</td>
+                            {% elif mode == 'perfects' %}
+                                <td class="score-cell"><span class="score-value">{{ item.primary }}</span></td>
+                                <td class="games-cell">{{ item.secondary }}%</td>
+                            {% elif mode == 'speed' %}
+                                <td class="score-cell"><span class="score-value">{{ item.primary }}s</span></td>
+                                <td class="games-cell">{{ item.secondary }}</td>
+                                <td class="games-cell">{{ item.tertiary }}%</td>
+                            {% endif %}
                         </tr>
                     {% endfor %}
                 </tbody>
             </table>
         </div>
+
+        <p id="leaderboard-no-match" class="text-muted text-center mt-4" style="display:none;">
+            Žádní hráči neodpovídají vyhledávání.
+        </p>
     {% else %}
         <div class="empty-state">
             <div class="empty-icon">🏆</div>
             <h3>Žádné výsledky</h3>
-            <p>Zatím nikdo nehrál žádný kvíz. Buďte první!</p>
+            <p>
+                {% if quiz_id %}
+                    Pro tento kvíz zatím nejsou žádné výsledky{% if period != 'alltime' %} v tomto období{% endif %}.
+                {% elif difficulty %}
+                    Pro zvolenou obtížnost nejsou žádné výsledky{% if period != 'alltime' %} v tomto období{% endif %}.
+                {% elif mode == 'perfects' %}
+                    Zatím nikdo nedosáhl 100 % skóre{% if period != 'alltime' %} v tomto období{% endif %}.
+                {% elif mode == 'speed' %}
+                    Zatím nejsou žádné kvalifikující výsledky{% if period != 'alltime' %} v tomto období{% endif %}.
+                {% else %}
+                    Zatím nikdo nehrál žádný kvíz{% if period != 'alltime' %} v tomto období{% endif %}. Buďte první!
+                {% endif %}
+            </p>
             <a href="{{ url_for('quiz.list_quizzes') }}" class="btn btn-primary">Procházet kvízy</a>
         </div>
     {% endif %}
+</div>
+
+{# ── Pinned user row ── #}
+{% if current_user.is_authenticated %}
+<div class="pinned-user-bar" id="pinned-user-bar">
+    <div class="container">
+    {% if pinned_user %}
+        <div class="leaderboard-table pinned-table">
+            <table>
+                <tbody>
+                    <tr class="current-user">
+                        <td class="rank-cell">
+                            {% if pinned_user.rank == 1 %}🥇
+                            {% elif pinned_user.rank == 2 %}🥈
+                            {% elif pinned_user.rank == 3 %}🥉
+                            {% else %}{{ pinned_user.rank }}.
+                            {% endif %}
+                        </td>
+                        <td class="player-cell">
+                            {% if current_user.avatar and current_user.avatar != 'default.png' %}
+                                <img src="{{ url_for('static', filename='assets/' ~ current_user.avatar) }}" alt="" class="player-avatar player-avatar-img">
+                            {% else %}
+                                <span class="player-avatar">{{ current_user.name[0].upper() }}</span>
+                            {% endif %}
+                            <span class="player-name">{{ current_user.name }}</span>
+                        </td>
+
+                        {% if quiz_id %}
+                            <td class="score-cell"><span class="score-value">{{ pinned_user.primary }}%</span></td>
+                            <td class="games-cell">{{ pinned_user.secondary }}s</td>
+                        {% elif mode == 'overall' %}
+                            <td class="score-cell"><span class="score-value">{{ pinned_user.primary }}%</span></td>
+                            <td class="games-cell">{{ pinned_user.secondary }}</td>
+                        {% elif mode == 'activity' %}
+                            <td class="score-cell"><span class="score-value">{{ pinned_user.primary }}</span></td>
+                            <td class="games-cell">{{ pinned_user.secondary }}%</td>
+                        {% elif mode == 'perfects' %}
+                            <td class="score-cell"><span class="score-value">{{ pinned_user.primary }}</span></td>
+                            <td class="games-cell">{{ pinned_user.secondary }}%</td>
+                        {% elif mode == 'speed' %}
+                            <td class="score-cell"><span class="score-value">{{ pinned_user.primary }}s</span></td>
+                            <td class="games-cell">{{ pinned_user.secondary }}</td>
+                            <td class="games-cell">{{ pinned_user.tertiary }}%</td>
+                        {% endif %}
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    {% else %}
+        <p class="pinned-unranked text-muted text-center">Zatím nejste v tomto žebříčku.</p>
+    {% endif %}
+    </div>
+</div>
+{% endif %}
+
+{# ── Mini-profile hover popover ── #}
+<div class="mp-popover" id="mp-popover">
+    <div id="mp-body">
+        <p class="text-muted text-center">Načítání…</p>
+    </div>
 </div>
 {% endblock %}

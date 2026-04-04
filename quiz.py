@@ -9,7 +9,7 @@ import os
 from flask import Blueprint, render_template, redirect, url_for, flash, request, jsonify
 from flask_login import login_required, current_user
 from database import db
-from models import Quiz, Question, Answer, GameResult, UserAnswer
+from models import Quiz, Question, Answer, GameResult, UserAnswer, User, Achievement, UserAchievement, pct
 
 quiz_bp = Blueprint('quiz', __name__)
 
@@ -47,10 +47,57 @@ def quiz_detail(quiz_id):
     return render_template('quiz_detail.html', quiz=quiz)
 
 
+@quiz_bp.route('/attempt/<int:game_id>')
+@login_required
+def attempt_detail(game_id):
+    """Detail pokusu – shrnutí odpovědí."""
+    game = GameResult.query.get_or_404(game_id)
+
+    if game.user_id != current_user.id and not current_user.is_admin():
+        flash('Nemáte oprávnění zobrazit tento pokus.', 'error')
+        return redirect(url_for('auth.profile'))
+
+    quiz = Quiz.query.get_or_404(game.quiz_id)
+
+    # Build question details with user answers
+    questions_detail = []
+    for ua in game.user_answers:
+        question = Question.query.get(ua.question_id)
+        if not question:
+            continue
+
+        correct_answers = [a for a in question.answers if a.is_correct]
+        chosen_answer = Answer.query.get(ua.answer_id) if ua.answer_id else None
+
+        questions_detail.append({
+            'question': question,
+            'all_answers': question.answers,
+            'chosen_answer': chosen_answer,
+            'chosen_text': ua.answer_text,
+            'correct_answers': correct_answers,
+            'is_correct': ua.is_correct
+        })
+
+    correct_count = sum(1 for q in questions_detail if q['is_correct'])
+    total_count = len(questions_detail)
+    percentage = round(correct_count / total_count * 100) if total_count > 0 else 0
+
+    return render_template('attempt_detail.html',
+                           game=game,
+                           quiz=quiz,
+                           questions=questions_detail,
+                           correct_count=correct_count,
+                           total_count=total_count,
+                           percentage=percentage)
+
+
+_desktop_process = None
+
 @quiz_bp.route('/quiz/<int:quiz_id>/play')
 @login_required
 def play_quiz(quiz_id):
     """Spustí desktopovou aplikaci pro hraní kvízu s automatickým přihlášením."""
+    global _desktop_process
     quiz = Quiz.query.get_or_404(quiz_id)
     
     if not quiz.questions:
@@ -58,12 +105,20 @@ def play_quiz(quiz_id):
         return redirect(url_for('quiz.quiz_detail', quiz_id=quiz_id))
     
     try:
+        # Ukončit předchozí instanci desktopové aplikace, pokud běží
+        if _desktop_process is not None and _desktop_process.poll() is None:
+            _desktop_process.terminate()
+            try:
+                _desktop_process.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                _desktop_process.kill()
+
         # Vygenerování SSO tokenu pro automatické přihlášení v desktopové aplikaci
         from api import generate_sso_token
         token = generate_sso_token(current_user.id)
         
         desktop_app_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'desktop_app.py')
-        subprocess.Popen([
+        _desktop_process = subprocess.Popen([
             sys.executable, desktop_app_path,
             '--quiz-id', str(quiz_id),
             '--token', token
@@ -114,6 +169,11 @@ def submit_quiz(quiz_id):
     answers = data['answers']
     time_spent = data.get('time_spent', 0)
     
+    # Minimální čas 0.5s na otázku
+    min_time = max(1, int(len(quiz.questions) * 0.5))
+    if time_spent < min_time:
+        time_spent = min_time
+
     # Výpočet skóre
     score = 0
     max_score = len(quiz.questions)
@@ -193,7 +253,7 @@ def submit_quiz(quiz_id):
         'success': True,
         'score': score,
         'max_score': max_score,
-        'percentage': round((score / max_score * 100) if max_score > 0 else 0, 1),
+        'percentage': pct((score / max_score * 100) if max_score > 0 else 0),
         'time_spent': time_spent,
         'results': results,
         'new_achievements': achievements_popup
@@ -415,6 +475,7 @@ def edit_quiz(quiz_id):
         
         db.session.commit()
         flash('Kvíz byl aktualizován.', 'success')
+        return redirect(url_for('quiz.create_quiz'))
     
     return render_template('quiz_edit.html', quiz=quiz)
 
@@ -551,32 +612,265 @@ def delete_quiz(quiz_id):
 
 @quiz_bp.route('/leaderboard')
 def leaderboard():
-    """Žebříček nejlepších hráčů."""
-    # Top hráči podle průměrného skóre
-    from sqlalchemy import func
-    
-    top_players = db.session.query(
-        GameResult.user_id,
-        func.avg(GameResult.score * 100.0 / GameResult.max_score).label('avg_score'),
-        func.count(GameResult.id).label('games_played')
-    ).group_by(GameResult.user_id).having(
-        func.count(GameResult.id) >= 1
-    ).order_by(func.avg(GameResult.score * 100.0 / GameResult.max_score).desc()).limit(20).all()
-    
-    # Přidání uživatelských dat
-    from models import User
-    leaderboard_data = []
-    for i, (user_id, avg_score, games_played) in enumerate(top_players, 1):
-        user = User.query.get(user_id)
-        if user:
-            leaderboard_data.append({
-                'rank': i,
+    """Žebříček nejlepších hráčů – více režimů, filtrování, časové období, konkrétní kvíz."""
+    from sqlalchemy import func, case
+    from datetime import datetime, timedelta
+
+    # ── Parse parameters ──
+    mode = request.args.get('mode', 'overall')
+    if mode not in ('overall', 'activity', 'perfects', 'speed'):
+        mode = 'overall'
+    difficulty = request.args.get('difficulty', '')
+    if difficulty not in ('easy', 'medium', 'hard'):
+        difficulty = ''
+    period = request.args.get('period', 'alltime')
+    if period not in ('daily', 'weekly', 'alltime'):
+        period = 'alltime'
+    quiz_id = request.args.get('quiz_id', 0, type=int) or None
+
+    selected_quiz = None
+    if quiz_id:
+        selected_quiz = Quiz.query.get(quiz_id)
+        if not selected_quiz:
+            quiz_id = None
+
+    all_quizzes = Quiz.query.order_by(Quiz.name).all()
+
+    # ── Time period filter ──
+    now = datetime.utcnow()
+    date_from = None
+    if period == 'daily':
+        date_from = now - timedelta(days=1)
+    elif period == 'weekly':
+        date_from = now - timedelta(weeks=1)
+
+    perfect_expr = case(
+        (db.and_(GameResult.score == GameResult.max_score, GameResult.max_score > 0), 1),
+        else_=0
+    )
+
+    all_data = []
+
+    if quiz_id:
+        # ── Specific quiz leaderboard: best attempt per user ──
+        q = GameResult.query.filter(
+            GameResult.quiz_id == quiz_id,
+            GameResult.max_score > 0
+        )
+        if date_from:
+            q = q.filter(GameResult.date >= date_from)
+        attempts = q.all()
+
+        best_per_user = {}
+        for a in attempts:
+            uid = a.user_id
+            if uid not in best_per_user:
+                best_per_user[uid] = a
+            else:
+                prev = best_per_user[uid]
+                if (a.score > prev.score) or (a.score == prev.score and a.time_spent < prev.time_spent):
+                    best_per_user[uid] = a
+
+        user_ids = list(best_per_user.keys())
+        users_map = {u.id: u for u in User.query.filter(User.id.in_(user_ids)).all()} if user_ids else {}
+
+        sorted_attempts = sorted(
+            best_per_user.values(),
+            key=lambda a: (-a.score / a.max_score, a.time_spent)
+        )
+        for a in sorted_attempts:
+            user = users_map.get(a.user_id)
+            if not user:
+                continue
+            score_pct = pct(a.score / a.max_score * 100)
+            all_data.append({
+                'rank': len(all_data) + 1,
                 'user': user,
-                'avg_score': round(avg_score, 1),
-                'games_played': games_played
+                'primary': score_pct,
+                'secondary': a.time_spent,
+                '_sort': (-a.score / a.max_score, a.time_spent, user.name.lower())
             })
-    
-    return render_template('leaderboard.html', leaderboard=leaderboard_data)
+
+    elif mode == 'speed':
+        # ── Speed mode ──
+        base = db.session.query(GameResult).filter(
+            GameResult.max_score > 0,
+            GameResult.score >= GameResult.max_score * 0.3
+        )
+        if difficulty:
+            base = base.join(Quiz, GameResult.quiz_id == Quiz.id).filter(Quiz.difficulty == difficulty)
+        if date_from:
+            base = base.filter(GameResult.date >= date_from)
+
+        rows = base.with_entities(
+            GameResult.user_id,
+            func.avg(GameResult.time_spent * 1.0 / GameResult.max_score).label('speed_score'),
+            (func.sum(GameResult.score) * 100.0 / func.sum(GameResult.max_score)).label('weighted_avg'),
+            func.count(GameResult.id).label('qualifying_runs'),
+            func.sum(perfect_expr).label('perfects')
+        ).group_by(GameResult.user_id).having(
+            func.count(GameResult.id) > 0
+        ).all()
+
+        user_ids = [r.user_id for r in rows]
+        users_map = {u.id: u for u in User.query.filter(User.id.in_(user_ids)).all()} if user_ids else {}
+
+        for row in rows:
+            user = users_map.get(row.user_id)
+            if not user:
+                continue
+            all_data.append({
+                'rank': 0,
+                'user': user,
+                'primary': round(row.speed_score, 2),
+                'secondary': int(row.qualifying_runs),
+                'tertiary': pct(row.weighted_avg),
+                '_sort': (row.speed_score, -row.weighted_avg, -row.qualifying_runs, -row.perfects, user.name.lower())
+            })
+
+    else:
+        # ── Overall / Activity / Perfects ──
+        base = db.session.query(GameResult).filter(GameResult.max_score > 0)
+        if difficulty:
+            base = base.join(Quiz, GameResult.quiz_id == Quiz.id).filter(Quiz.difficulty == difficulty)
+        if date_from:
+            base = base.filter(GameResult.date >= date_from)
+
+        weighted_avg = (func.sum(GameResult.score) * 100.0 / func.sum(GameResult.max_score)).label('weighted_avg')
+        games_played = func.count(GameResult.id).label('games_played')
+        perfects = func.sum(perfect_expr).label('perfects')
+
+        if mode == 'overall':
+            rows = base.with_entities(
+                GameResult.user_id, weighted_avg, games_played, perfects
+            ).group_by(GameResult.user_id).all()
+        elif mode == 'activity':
+            rows = base.with_entities(
+                GameResult.user_id, games_played, weighted_avg, perfects
+            ).group_by(GameResult.user_id).all()
+        elif mode == 'perfects':
+            rows = base.with_entities(
+                GameResult.user_id, perfects, weighted_avg, games_played
+            ).group_by(GameResult.user_id).having(
+                func.sum(perfect_expr) > 0
+            ).all()
+
+        user_ids = [r.user_id for r in rows]
+        users_map = {u.id: u for u in User.query.filter(User.id.in_(user_ids)).all()} if user_ids else {}
+
+        for row in rows:
+            user = users_map.get(row.user_id)
+            if not user:
+                continue
+            entry = {'rank': 0, 'user': user}
+            if mode == 'overall':
+                entry['primary'] = pct(row.weighted_avg)
+                entry['secondary'] = row.games_played
+                entry['_sort'] = (-row.weighted_avg, -row.games_played, -row.perfects, user.name.lower())
+            elif mode == 'activity':
+                entry['primary'] = row.games_played
+                entry['secondary'] = pct(row.weighted_avg)
+                entry['_sort'] = (-row.games_played, -row.weighted_avg, -row.perfects, user.name.lower())
+            elif mode == 'perfects':
+                entry['primary'] = int(row.perfects)
+                entry['secondary'] = pct(row.weighted_avg)
+                entry['_sort'] = (-row.perfects, -row.weighted_avg, -row.games_played, user.name.lower())
+            all_data.append(entry)
+
+    # ── Sort, rank, pinned user ──
+    all_data.sort(key=lambda e: e['_sort'])
+    for i, entry in enumerate(all_data, 1):
+        entry['rank'] = i
+
+    pinned_user = None
+    if current_user.is_authenticated:
+        for entry in all_data:
+            if entry['user'].id == current_user.id:
+                pinned_user = dict(entry)
+                break
+
+    leaderboard_data = all_data[:50]
+
+    return render_template('leaderboard.html',
+                           leaderboard=leaderboard_data,
+                           mode=mode,
+                           difficulty=difficulty,
+                           period=period,
+                           quiz_id=quiz_id,
+                           selected_quiz=selected_quiz,
+                           all_quizzes=all_quizzes,
+                           pinned_user=pinned_user)
+
+
+@quiz_bp.route('/leaderboard/profile/<int:user_id>')
+def mini_profile(user_id):
+    """Mini profil hráče pro leaderboard modal."""
+    from sqlalchemy import func
+
+    user = User.query.get_or_404(user_id)
+    stats = user.get_stats()
+
+    # Perfect score count
+    perfect_count = sum(
+        1 for r in user.game_results
+        if r.max_score > 0 and r.score == r.max_score
+    )
+
+    # Favorite category (most played)
+    fav_cat = db.session.query(
+        Quiz.category, func.count(GameResult.id).label('cnt')
+    ).join(Quiz, GameResult.quiz_id == Quiz.id).filter(
+        GameResult.user_id == user_id
+    ).group_by(Quiz.category).order_by(
+        func.count(GameResult.id).desc()
+    ).first()
+
+    # Best category (highest weighted avg)
+    best_cat = db.session.query(
+        Quiz.category,
+        (func.sum(GameResult.score) * 100.0 / func.sum(GameResult.max_score)).label('avg')
+    ).join(Quiz, GameResult.quiz_id == Quiz.id).filter(
+        GameResult.user_id == user_id,
+        GameResult.max_score > 0
+    ).group_by(Quiz.category).order_by(
+        (func.sum(GameResult.score) * 100.0 / func.sum(GameResult.max_score)).desc()
+    ).first()
+
+    # Top 3 achievements (gold first)
+    top_achs = db.session.query(Achievement).join(
+        UserAchievement, UserAchievement.achievement_id == Achievement.id
+    ).filter(
+        UserAchievement.user_id == user_id
+    ).order_by(
+        db.case(
+            (Achievement.tier == 'gold', 1),
+            (Achievement.tier == 'silver', 2),
+            (Achievement.tier == 'bronze', 3),
+            else_=4
+        ),
+        UserAchievement.earned_at.desc()
+    ).limit(3).all()
+
+    return jsonify({
+        'name': user.name,
+        'avatar': user.name[0].upper() if user.name else '?',
+        'avatar_img': user.avatar if user.avatar and user.avatar != 'default.png' else None,
+        'stats': {
+            'total_games': stats['total_games'],
+            'average_score': stats['average_score'],
+            'best_score': stats['best_score'],
+            'perfect_count': perfect_count
+        },
+        'favorite_category': fav_cat[0] if fav_cat else None,
+        'best_category': {
+            'name': best_cat[0],
+            'score': pct(best_cat[1])
+        } if best_cat else None,
+        'achievements': [
+            {'name': a.name, 'icon': a.icon, 'tier': a.tier, 'description': a.description}
+            for a in top_achs
+        ]
+    })
 
 
 @quiz_bp.route('/my-quizzes')

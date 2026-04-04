@@ -6,7 +6,7 @@ from datetime import datetime, timedelta, timezone
 from flask import Blueprint, request, jsonify
 from flask_login import login_user, current_user, login_required
 from database import db
-from models import User, Quiz, Question, Answer, GameResult, UserAnswer
+from models import User, Quiz, Question, Answer, GameResult, UserAnswer, pct
 
 api_bp = Blueprint('api', __name__, url_prefix='/api')
 
@@ -159,6 +159,11 @@ def api_submit_quiz(quiz_id):
     answers = data['answers']
     time_spent = data.get('time_spent', 0)
     
+    # Minimální čas 0.5s na otázku
+    min_time = max(1, int(len(quiz.questions) * 0.5))
+    if time_spent < min_time:
+        time_spent = min_time
+
     # Výpočet skóre
     score = 0
     max_score = len(quiz.questions)
@@ -222,7 +227,7 @@ def api_submit_quiz(quiz_id):
         'success': True,
         'score': score,
         'max_score': max_score,
-        'percentage': round((score / max_score * 100) if max_score > 0 else 0, 1),
+        'percentage': pct((score / max_score * 100) if max_score > 0 else 0),
         'time_spent': time_spent,
         'results': results
     })

@@ -1,0 +1,209 @@
+{% extends 'base.html' %}
+
+{% block title %}Pokus – {{ quiz.name }}{% endblock %}
+
+{% block extra_css %}
+<style>
+    .attempt-page { max-width: 900px; margin: 0 auto; }
+
+    .attempt-header {
+        background: var(--card-bg);
+        border-radius: var(--radius);
+        padding: 24px;
+        margin-bottom: 24px;
+    }
+
+    .attempt-header h1 {
+        margin: 0 0 6px;
+        font-size: 1.5rem;
+    }
+
+    .attempt-header .attempt-meta {
+        color: var(--text-muted);
+        font-size: 0.9rem;
+    }
+
+    .attempt-summary {
+        display: grid;
+        grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+        gap: 12px;
+        margin-bottom: 24px;
+    }
+
+    .attempt-stat {
+        background: var(--card-bg);
+        border-radius: var(--radius);
+        padding: 16px;
+        text-align: center;
+    }
+
+    .attempt-stat-value {
+        display: block;
+        font-size: 1.5rem;
+        font-weight: 700;
+        color: var(--primary);
+    }
+
+    .attempt-stat-label {
+        font-size: 0.8rem;
+        color: var(--text-muted);
+        margin-top: 4px;
+    }
+
+    .attempt-stat-value.score-good { color: var(--success); }
+    .attempt-stat-value.score-ok   { color: var(--warning); }
+    .attempt-stat-value.score-bad  { color: var(--danger); }
+
+    .question-card {
+        background: var(--card-bg);
+        border-radius: var(--radius);
+        padding: 20px;
+        margin-bottom: 16px;
+        border-left: 4px solid var(--border);
+    }
+
+    .question-card.correct { border-left-color: var(--success); }
+    .question-card.wrong   { border-left-color: var(--danger); }
+
+    .question-card-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 12px;
+    }
+
+    .question-number-label {
+        font-size: 0.85rem;
+        color: var(--text-muted);
+    }
+
+    .question-result-badge {
+        font-size: 0.8rem;
+        font-weight: 600;
+        padding: 3px 10px;
+        border-radius: 12px;
+    }
+
+    .badge-correct {
+        background: rgba(34, 197, 94, 0.15);
+        color: var(--success);
+    }
+
+    .badge-wrong {
+        background: rgba(239, 68, 68, 0.15);
+        color: var(--danger);
+    }
+
+    .question-text-display {
+        font-size: 1.1rem;
+        font-weight: 500;
+        margin-bottom: 14px;
+    }
+
+    .answer-list {
+        list-style: none;
+        padding: 0;
+        margin: 0;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+    }
+
+    .answer-item {
+        padding: 10px 14px;
+        border-radius: var(--radius-sm);
+        border: 1px solid var(--border);
+        font-size: 0.95rem;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+    }
+
+    .answer-item.is-correct {
+        border-color: var(--success);
+        background: rgba(34, 197, 94, 0.08);
+    }
+
+    .answer-item.user-chose-wrong {
+        border-color: var(--danger);
+        background: rgba(239, 68, 68, 0.08);
+    }
+
+    .answer-icon {
+        flex-shrink: 0;
+        font-size: 1rem;
+    }
+
+    .attempt-actions {
+        display: flex;
+        gap: 12px;
+        margin-top: 24px;
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container attempt-page">
+    <div class="attempt-header">
+        <h1>{{ quiz.name }}</h1>
+        <p class="attempt-meta">
+            {{ quiz.category }} · {{ quiz.difficulty }} ·
+            {{ game.date.strftime('%d.%m.%Y %H:%M') }}
+        </p>
+    </div>
+
+    <div class="attempt-summary">
+        <div class="attempt-stat">
+            <span class="attempt-stat-value
+                {% if percentage >= 80 %}score-good
+                {% elif percentage >= 50 %}score-ok
+                {% else %}score-bad{% endif %}">
+                {{ percentage }}%
+            </span>
+            <span class="attempt-stat-label">Skóre</span>
+        </div>
+        <div class="attempt-stat">
+            <span class="attempt-stat-value">{{ correct_count }}/{{ total_count }}</span>
+            <span class="attempt-stat-label">Správných odpovědí</span>
+        </div>
+        <div class="attempt-stat">
+            <span class="attempt-stat-value">{{ game.time_spent }}s</span>
+            <span class="attempt-stat-label">Čas</span>
+        </div>
+    </div>
+
+    {% for q in questions %}
+    <div class="question-card {{ 'correct' if q.is_correct else 'wrong' }}">
+        <div class="question-card-header">
+            <span class="question-number-label">Otázka {{ loop.index }} z {{ total_count }}</span>
+            <span class="question-result-badge {{ 'badge-correct' if q.is_correct else 'badge-wrong' }}">
+                {{ 'Správně' if q.is_correct else 'Špatně' }}
+            </span>
+        </div>
+        <div class="question-text-display">{{ q.question.text }}</div>
+        <ul class="answer-list">
+            {% for ans in q.all_answers %}
+                {% set is_correct_answer = ans.is_correct %}
+                {% set user_chose_this = (q.chosen_answer and q.chosen_answer.id == ans.id) %}
+                <li class="answer-item
+                    {{ 'is-correct' if is_correct_answer else '' }}
+                    {{ 'user-chose-wrong' if user_chose_this and not is_correct_answer else '' }}">
+                    <span class="answer-icon">
+                        {% if user_chose_this and is_correct_answer %}✅
+                        {% elif user_chose_this and not is_correct_answer %}❌
+                        {% elif is_correct_answer %}✔️
+                        {% else %}○{% endif %}
+                    </span>
+                    {{ ans.text }}
+                </li>
+            {% endfor %}
+        </ul>
+    </div>
+    {% endfor %}
+
+    <div class="attempt-actions">
+        <a href="{{ url_for('auth.profile') }}" class="btn btn-outline">Zpět na profil</a>
+        <a href="{{ url_for('quiz.quiz_detail', quiz_id=quiz.id) }}" class="btn btn-primary">Kvíz</a>
+    </div>
+</div>
+{% endblock %}

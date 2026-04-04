@@ -1,7 +1,7 @@
 name,Příroda a svět
-category,Přírodověda
-difficulty,hard
-time_limit,25
+category, Přírodověda
+difficulty , hard
+time_limit , 25
 question,answer_a,answer_b,answer_c,answer_d,correct
 "Jaká je nejvyšší hora světa?","K2","Mount Everest","Kančendženga","Lhoce","B"
 "Který plyn tvoří většinu zemské atmosféry?","Kyslík","Vodík","Dusík","Oxid uhličitý","C"

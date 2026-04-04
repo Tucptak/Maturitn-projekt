@@ -1,5 +1,5 @@
 """
-QuizApp - Desktopová aplikace (PyQt5)
+Braniac - Desktopová aplikace (PyQt5)
 Maturitní projekt 2026
 
 Tato aplikace umožňuje hrát kvízy z databáze přes desktopové rozhraní.
@@ -15,7 +15,7 @@ from PyQt5.QtWidgets import (
     QListWidgetItem, QMessageBox, QFrame, QProgressBar, QGridLayout,
     QScrollArea, QComboBox, QSpacerItem, QSizePolicy, QFileDialog
 )
-from PyQt5.QtCore import Qt, QTimer, pyqtSignal
+from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QPoint
 from PyQt5.QtGui import QFont, QPalette, QColor
 
 # Konfigurace API
@@ -162,6 +162,56 @@ class StyleSheet:
         QScrollArea {
             border: none;
         }
+        QScrollBar:vertical {
+            background-color: #1e293b;
+            width: 10px;
+            margin: 0;
+            border-radius: 5px;
+        }
+        QScrollBar::handle:vertical {
+            background-color: #334155;
+            min-height: 30px;
+            border-radius: 5px;
+        }
+        QScrollBar::handle:vertical:hover {
+            background-color: #6366f1;
+        }
+        QScrollBar::handle:vertical:pressed {
+            background-color: #4f46e5;
+        }
+        QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {
+            height: 0;
+            background: none;
+            border: none;
+        }
+        QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {
+            background: none;
+        }
+        QScrollBar:horizontal {
+            background-color: #1e293b;
+            height: 10px;
+            margin: 0;
+            border-radius: 5px;
+        }
+        QScrollBar::handle:horizontal {
+            background-color: #334155;
+            min-width: 30px;
+            border-radius: 5px;
+        }
+        QScrollBar::handle:horizontal:hover {
+            background-color: #6366f1;
+        }
+        QScrollBar::handle:horizontal:pressed {
+            background-color: #4f46e5;
+        }
+        QScrollBar::add-line:horizontal, QScrollBar::sub-line:horizontal {
+            width: 0;
+            background: none;
+            border: none;
+        }
+        QScrollBar::add-page:horizontal, QScrollBar::sub-page:horizontal {
+            background: none;
+        }
         QFrame.card {
             background-color: #1e293b;
             border: 1px solid #334155;
@@ -276,7 +326,7 @@ class LoginWidget(QWidget):
         layout.setSpacing(20)
         
         # Logo/Název
-        title = QLabel("🎯 QuizApp")
+        title = QLabel("🧠 Braniac")
         title.setFont(QFont('Segoe UI', 32, QFont.Bold))
         title.setAlignment(Qt.AlignCenter)
         layout.addWidget(title)
@@ -941,6 +991,105 @@ class ResultsWidget(QWidget):
                 f.write(text)
 
 
+class CustomTitleBar(QWidget):
+    """Vlastní titulková lišta."""
+
+    def __init__(self, parent=None):
+        super().__init__(parent)
+        self.parent_window = parent
+        self._drag_pos = None
+        self.setFixedHeight(40)
+        self.setAutoFillBackground(True)
+        palette = self.palette()
+        palette.setColor(QPalette.Window, QColor("#1e293b"))
+        self.setPalette(palette)
+
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(12, 0, 8, 0)
+        layout.setSpacing(0)
+
+        # Icon + title
+        icon_label = QLabel("🧠")
+        icon_label.setStyleSheet("font-size: 18px; background: transparent;")
+        layout.addWidget(icon_label)
+
+        title_label = QLabel("Braniac")
+        title_label.setStyleSheet("""
+            font-size: 14px;
+            font-weight: bold;
+            color: #f8fafc;
+            padding-left: 6px;
+            background: transparent;
+        """)
+        layout.addWidget(title_label)
+        layout.addStretch()
+
+        # Window control buttons
+        btn_style_base = """
+            QPushButton {{
+                background-color: transparent;
+                color: #94a3b8;
+                border: none;
+                border-radius: 0px;
+                font-size: 16px;
+                padding: 0px;
+                min-width: 40px;
+                max-width: 40px;
+                min-height: 40px;
+                max-height: 40px;
+            }}
+            QPushButton:hover {{
+                background-color: {hover_bg};
+                color: {hover_fg};
+            }}
+        """
+
+        self.btn_minimize = QPushButton("─")
+        self.btn_minimize.setStyleSheet(btn_style_base.format(hover_bg="#334155", hover_fg="#f8fafc"))
+        self.btn_minimize.clicked.connect(self._minimize)
+
+        self.btn_maximize = QPushButton("☐")
+        self.btn_maximize.setStyleSheet(btn_style_base.format(hover_bg="#334155", hover_fg="#f8fafc"))
+        self.btn_maximize.clicked.connect(self._toggle_maximize)
+
+        self.btn_close = QPushButton("✕")
+        self.btn_close.setStyleSheet(btn_style_base.format(hover_bg="#ef4444", hover_fg="#ffffff"))
+        self.btn_close.clicked.connect(self._close)
+
+        layout.addWidget(self.btn_minimize)
+        layout.addWidget(self.btn_maximize)
+        layout.addWidget(self.btn_close)
+
+    def _minimize(self):
+        self.parent_window.showMinimized()
+
+    def _toggle_maximize(self):
+        if self.parent_window.isMaximized():
+            self.parent_window.showNormal()
+        else:
+            self.parent_window.showMaximized()
+
+    def _close(self):
+        self.parent_window.close()
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self._drag_pos = event.globalPos() - self.parent_window.frameGeometry().topLeft()
+            event.accept()
+
+    def mouseMoveEvent(self, event):
+        if self._drag_pos is not None and event.buttons() == Qt.LeftButton:
+            self.parent_window.move(event.globalPos() - self._drag_pos)
+            event.accept()
+
+    def mouseReleaseEvent(self, event):
+        self._drag_pos = None
+
+    def mouseDoubleClickEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self._toggle_maximize()
+
+
 class MainWindow(QMainWindow):
     """Hlavní okno aplikace."""
     
@@ -957,8 +1106,9 @@ class MainWindow(QMainWindow):
             QTimer.singleShot(100, self._auto_login_with_token)
     
     def init_ui(self):
-        self.setWindowTitle("QuizApp - Desktop")
+        self.setWindowTitle("Braniac - Desktop")
         self.setMinimumSize(900, 700)
+        self.setWindowFlags(Qt.FramelessWindowHint)
         self.setStyleSheet(StyleSheet.MAIN)
         
         # Centrální widget se stacked layoutem
@@ -966,7 +1116,24 @@ class MainWindow(QMainWindow):
         self.setCentralWidget(self.central_widget)
         
         layout = QVBoxLayout(self.central_widget)
-        layout.setContentsMargins(30, 30, 30, 30)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+        
+        # Custom title bar
+        self.title_bar = CustomTitleBar(self)
+        layout.addWidget(self.title_bar)
+        
+        # Separator line
+        separator = QFrame()
+        separator.setFrameShape(QFrame.HLine)
+        separator.setFixedHeight(1)
+        separator.setStyleSheet("background-color: #334155; border: none;")
+        layout.addWidget(separator)
+        
+        # Content area with padding
+        content_widget = QWidget()
+        content_layout = QVBoxLayout(content_widget)
+        content_layout.setContentsMargins(30, 30, 30, 30)
         
         self.stack = QStackedWidget()
         
@@ -993,7 +1160,8 @@ class MainWindow(QMainWindow):
         self.results_widget.replay_requested.connect(self.replay_quiz)
         self.stack.addWidget(self.results_widget)
         
-        layout.addWidget(self.stack)
+        content_layout.addWidget(self.stack)
+        layout.addWidget(content_widget)
     
     def _auto_login_with_token(self):
         """Automatické přihlášení pomocí SSO tokenu z webu."""

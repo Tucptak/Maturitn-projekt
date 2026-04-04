@@ -1,5 +1,5 @@
 """
-Hlavní soubor Flask aplikace - Quiz App.
+Hlavní soubor Flask aplikace - Braniac.
 """
 import os
 from flask import Flask, render_template
@@ -39,6 +39,9 @@ app.register_blueprint(admin_bp)
 
 from api import api_bp
 app.register_blueprint(api_bp)
+
+from stats import stats_bp
+app.register_blueprint(stats_bp)
 
 
 @app.route('/')

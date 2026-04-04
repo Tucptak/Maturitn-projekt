@@ -1,0 +1,452 @@
+"""
+Statistiky – globální dashboard a per-user deep-dive.
+"""
+import csv
+import io
+from datetime import datetime, timedelta
+from flask import Blueprint, render_template, request, jsonify, Response, abort
+from flask_login import current_user, login_required
+from sqlalchemy import func, case
+from database import db
+from models import User, Quiz, Question, Answer, GameResult, UserAnswer, pct
+
+stats_bp = Blueprint('stats', __name__, url_prefix='/stats')
+
+
+# ── Helpers ──────────────────────────────────────────────────────────────────
+
+def _parse_filters():
+    """Parse time-range and category from query string."""
+    period = request.args.get('period', '30d')
+    category = request.args.get('category', '')
+    now = datetime.utcnow()
+    if period == 'today':
+        since = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    elif period == '7d':
+        since = now - timedelta(days=7)
+    elif period == '30d':
+        since = now - timedelta(days=30)
+    else:
+        since = None
+    return period, category, since
+
+
+def _base_q(since=None, category=None):
+    """GameResult query with optional time / category filters."""
+    q = GameResult.query.join(Quiz, GameResult.quiz_id == Quiz.id)
+    if since:
+        q = q.filter(GameResult.date >= since)
+    if category:
+        q = q.filter(Quiz.category == category)
+    return q
+
+
+def _categories():
+    return [c[0] for c in db.session.query(Quiz.category).distinct().order_by(Quiz.category).all()]
+
+
+# ── Global data builders ────────────────────────────────────────────────────
+
+def _counters(since, category):
+    total_games = _base_q(since, category).count()
+
+    ua_q = db.session.query(func.count(UserAnswer.id)).join(
+        GameResult, UserAnswer.game_id == GameResult.id
+    ).join(Quiz, GameResult.quiz_id == Quiz.id).filter(UserAnswer.is_correct == True)
+    if since:
+        ua_q = ua_q.filter(GameResult.date >= since)
+    if category:
+        ua_q = ua_q.filter(Quiz.category == category)
+    total_correct = ua_q.scalar() or 0
+
+    user_q = db.session.query(func.count(func.distinct(GameResult.user_id))).join(
+        Quiz, GameResult.quiz_id == Quiz.id)
+    if since:
+        user_q = user_q.filter(GameResult.date >= since)
+    if category:
+        user_q = user_q.filter(Quiz.category == category)
+    total_players = user_q.scalar() or 0
+
+    return {'total_games': total_games, 'total_correct': total_correct, 'total_players': total_players}
+
+
+def _recent_feed(since, category, limit=20):
+    q = _base_q(since, category).join(
+        User, GameResult.user_id == User.id
+    ).order_by(GameResult.date.desc()).limit(limit)
+    feed = []
+    for gr in q.all():
+        pct = round(gr.score / gr.max_score * 100) if gr.max_score > 0 else 0
+        feed.append({
+            'user_name': gr.user.name,
+            'user_avatar': gr.user.avatar,
+            'user_id': gr.user.id,
+            'user_initial': gr.user.name[0].upper() if gr.user.name else '?',
+            'quiz_name': gr.quiz.name,
+            'quiz_category': gr.quiz.category,
+            'score_pct': pct,
+            'time_spent': gr.time_spent,
+            'date': gr.date.strftime('%d.%m. %H:%M') if gr.date else ''
+        })
+    return feed
+
+
+def _hot_topics(since, category, limit=8):
+    q = db.session.query(
+        Quiz.category, func.count(GameResult.id).label('cnt')
+    ).join(Quiz, GameResult.quiz_id == Quiz.id)
+    if since:
+        q = q.filter(GameResult.date >= since)
+    if category:
+        q = q.filter(Quiz.category == category)
+    return [{'category': r[0], 'count': r[1]}
+            for r in q.group_by(Quiz.category).order_by(func.count(GameResult.id).desc()).limit(limit).all()]
+
+
+def _distribution(since, category):
+    """Score-percentage histogram in 10 % bins (real data, not a synthetic curve)."""
+    rows = _base_q(since, category).filter(
+        GameResult.max_score > 0
+    ).with_entities(GameResult.score, GameResult.max_score).all()
+    bins = [0] * 10
+    for s, m in rows:
+        bins[min(int(s / m * 10), 9)] += 1
+    return {'labels': [f'{i * 10}\u2013{(i + 1) * 10}%' for i in range(10)], 'data': bins}
+
+
+def _category_bars(since, category, limit=8):
+    """Top categories by play volume with average score – horizontal bar chart."""
+    q = db.session.query(
+        Quiz.category,
+        func.avg(GameResult.score * 100.0 / GameResult.max_score),
+        func.count(GameResult.id)
+    ).join(Quiz, GameResult.quiz_id == Quiz.id).filter(GameResult.max_score > 0)
+    if since:
+        q = q.filter(GameResult.date >= since)
+    if category:
+        q = q.filter(Quiz.category == category)
+    rows = q.group_by(Quiz.category).order_by(
+        func.avg(GameResult.score * 100.0 / GameResult.max_score).desc()
+    ).limit(limit).all()
+    return {'labels': [r[0] for r in rows],
+            'data': [pct(float(r[1])) for r in rows],
+            'counts': [r[2] for r in rows]}
+
+
+def _trend(since, category, period='30d'):
+    effective = since or (datetime.utcnow() - timedelta(days=90))
+    hourly = (period == 'today')
+
+    def _query(dt_from):
+        if hourly:
+            group_col = func.date_format(GameResult.date, '%H:00')
+        else:
+            group_col = func.date(GameResult.date)
+        q = db.session.query(
+            group_col,
+            func.avg(GameResult.score * 100.0 / GameResult.max_score)
+        ).join(Quiz, GameResult.quiz_id == Quiz.id).filter(
+            GameResult.max_score > 0, GameResult.date >= dt_from)
+        if category:
+            q = q.filter(Quiz.category == category)
+        return {str(r[0]): round(float(r[1]), 1)
+                for r in q.group_by(group_col).order_by(group_col).all()}
+
+    data = _query(effective)
+    # If the selected period has no data, widen to all available data.
+    if not data and since is not None:
+        data = _query(datetime(2000, 1, 1))
+
+    # Build a complete x-axis so the graph always has all slots filled.
+    now = datetime.utcnow()
+    if hourly:
+        slots = [f'{h:02d}:00' for h in range(24)]
+    elif period == '7d':
+        slots = [str((now - timedelta(days=6 - i)).date()) for i in range(7)]
+    else:
+        slots = sorted(data.keys()) if data else []
+
+    labels = slots
+    values = [data.get(s, 0) for s in slots]
+    return {'labels': labels, 'data': values}
+
+
+def _hardest_global(since, category, limit=10):
+    q = db.session.query(
+        Question.text, Quiz.name, Quiz.category,
+        func.count(UserAnswer.id).label('total'),
+        func.sum(case((UserAnswer.is_correct == False, 1), else_=0)).label('wrong')
+    ).join(UserAnswer, UserAnswer.question_id == Question.id
+    ).join(GameResult, UserAnswer.game_id == GameResult.id
+    ).join(Quiz, Question.quiz_id == Quiz.id)
+    if since:
+        q = q.filter(GameResult.date >= since)
+    if category:
+        q = q.filter(Quiz.category == category)
+    rows = q.group_by(Question.id, Question.text, Quiz.name, Quiz.category).having(
+        func.count(UserAnswer.id) >= 3
+    ).order_by(
+        (func.sum(case((UserAnswer.is_correct == False, 1), else_=0)) * 100.0 / func.count(UserAnswer.id)).desc()
+    ).limit(limit).all()
+    return [{'text': r[0], 'quiz': r[1], 'category': r[2], 'attempts': r[3],
+             'wrong_rate': pct(r[4] / r[3] * 100) if r[3] else 0} for r in rows]
+
+
+# ── Per-user data builders ──────────────────────────────────────────────────
+
+def _user_scatter(uid, since, category):
+    """Accuracy vs speed – each point is one attempt.
+
+    X = average seconds per question (time_spent / max_score).
+    Per-question timing is not available; this is the best proxy.
+    """
+    q = GameResult.query.join(Quiz, GameResult.quiz_id == Quiz.id).filter(
+        GameResult.user_id == uid, GameResult.max_score > 0)
+    if since:
+        q = q.filter(GameResult.date >= since)
+    if category:
+        q = q.filter(Quiz.category == category)
+    return [{'x': round(gr.time_spent / gr.max_score, 1),
+             'y': pct(gr.score / gr.max_score * 100),
+             'label': gr.quiz.name} for gr in q.all()]
+
+
+def _user_streaks(uid):
+    results = GameResult.query.filter_by(user_id=uid).order_by(GameResult.date).all()
+    total_correct = db.session.query(func.count(UserAnswer.id)).join(
+        GameResult, UserAnswer.game_id == GameResult.id
+    ).filter(GameResult.user_id == uid, UserAnswer.is_correct == True).scalar() or 0
+    total_answered = db.session.query(func.count(UserAnswer.id)).join(
+        GameResult, UserAnswer.game_id == GameResult.id
+    ).filter(GameResult.user_id == uid).scalar() or 0
+
+    longest = current = 0
+    for gr in results:
+        if gr.max_score > 0 and gr.score == gr.max_score:
+            current += 1
+            longest = max(longest, current)
+        else:
+            current = 0
+
+    return {'total_correct': total_correct, 'total_answered': total_answered,
+            'longest_perfect_streak': longest, 'total_games': len(results)}
+
+
+def _user_mastery(uid, since, category):
+    """Category bar chart – requires min 2 attempts per category."""
+    q = db.session.query(
+        Quiz.category,
+        func.avg(GameResult.score * 100.0 / GameResult.max_score),
+        func.count(GameResult.id)
+    ).join(Quiz, GameResult.quiz_id == Quiz.id).filter(
+        GameResult.user_id == uid, GameResult.max_score > 0)
+    if since:
+        q = q.filter(GameResult.date >= since)
+    if category:
+        q = q.filter(Quiz.category == category)
+    rows = q.group_by(Quiz.category).having(func.count(GameResult.id) >= 2).order_by(
+        func.avg(GameResult.score * 100.0 / GameResult.max_score).desc()).all()
+    return {'labels': [r[0] for r in rows],
+            'data': [pct(float(r[1])) for r in rows],
+            'attempts': [r[2] for r in rows]}
+
+
+def _user_comparison(uid, since, category, period='30d'):
+    """User trend line overlaid on global average."""
+    effective = since or (datetime.utcnow() - timedelta(days=90))
+    hourly = (period == 'today')
+
+    def _q(dt_from, user_filter=None):
+        if hourly:
+            group_col = func.date_format(GameResult.date, '%H:00')
+        else:
+            group_col = func.date(GameResult.date)
+        q = db.session.query(
+            group_col,
+            func.avg(GameResult.score * 100.0 / GameResult.max_score)
+        ).join(Quiz, GameResult.quiz_id == Quiz.id).filter(
+            GameResult.max_score > 0, GameResult.date >= dt_from)
+        if category:
+            q = q.filter(Quiz.category == category)
+        if user_filter is not None:
+            q = q.filter(GameResult.user_id == user_filter)
+        return {str(r[0]): round(float(r[1]), 1)
+                for r in q.group_by(group_col).order_by(group_col).all()}
+
+    u, g = _q(effective, uid), _q(effective)
+    # If the selected period has no data, widen to all available data.
+    if not u and not g and since is not None:
+        fallback = datetime(2000, 1, 1)
+        u, g = _q(fallback, uid), _q(fallback)
+
+    # Build a complete x-axis.
+    now = datetime.utcnow()
+    if hourly:
+        slots = [f'{h:02d}:00' for h in range(24)]
+    elif period == '7d':
+        slots = [str((now - timedelta(days=6 - i)).date()) for i in range(7)]
+    else:
+        slots = sorted(set(u) | set(g)) if (u or g) else []
+
+    return {'labels': slots,
+            'user_data': [u.get(s) for s in slots],
+            'global_data': [g.get(s) for s in slots]}
+
+
+def _user_hardest(uid, since, category, limit=10):
+    q = db.session.query(
+        Question.text, Quiz.name, Quiz.category,
+        func.count(UserAnswer.id).label('total'),
+        func.sum(case((UserAnswer.is_correct == False, 1), else_=0)).label('wrong')
+    ).join(UserAnswer, UserAnswer.question_id == Question.id
+    ).join(GameResult, UserAnswer.game_id == GameResult.id
+    ).join(Quiz, Question.quiz_id == Quiz.id
+    ).filter(GameResult.user_id == uid)
+    if since:
+        q = q.filter(GameResult.date >= since)
+    if category:
+        q = q.filter(Quiz.category == category)
+    rows = q.group_by(Question.id, Question.text, Quiz.name, Quiz.category).having(
+        func.sum(case((UserAnswer.is_correct == False, 1), else_=0)) > 0
+    ).order_by(
+        (func.sum(case((UserAnswer.is_correct == False, 1), else_=0)) * 100.0 / func.count(UserAnswer.id)).desc()
+    ).limit(limit).all()
+    return [{'text': r[0], 'quiz': r[1], 'category': r[2], 'attempts': r[3],
+             'wrong_rate': pct(r[4] / r[3] * 100) if r[3] else 0} for r in rows]
+
+
+def _user_personal_bests(uid):
+    rows = db.session.query(
+        Quiz.category, GameResult.score, GameResult.max_score,
+        GameResult.time_spent, Quiz.name, GameResult.date
+    ).join(Quiz, GameResult.quiz_id == Quiz.id).filter(
+        GameResult.user_id == uid, GameResult.max_score > 0).all()
+
+    bests = {}
+    for cat, score, mx, time_s, qname, dt in rows:
+        pct = score / mx * 100
+        if cat not in bests:
+            bests[cat] = {'category': cat,
+                          'best_pct': pct, 'best_quiz': qname, 'best_date': dt,
+                          'fastest': time_s, 'fast_quiz': qname, 'fast_date': dt}
+        else:
+            b = bests[cat]
+            if pct > b['best_pct'] or (pct == b['best_pct'] and dt and b['best_date'] and dt < b['best_date']):
+                b.update(best_pct=pct, best_quiz=qname, best_date=dt)
+            if time_s < b['fastest'] or (time_s == b['fastest'] and dt and b['fast_date'] and dt < b['fast_date']):
+                b.update(fastest=time_s, fast_quiz=qname, fast_date=dt)
+
+    for v in bests.values():
+        v['best_pct'] = pct(v['best_pct'])
+        v['best_date'] = v['best_date'].strftime('%d.%m.%Y') if v['best_date'] else ''
+        v['fast_date'] = v['fast_date'].strftime('%d.%m.%Y') if v['fast_date'] else ''
+    return sorted(bests.values(), key=lambda x: -x['best_pct'])
+
+
+# ── Routes ──────────────────────────────────────────────────────────────────
+
+@stats_bp.route('/')
+def global_stats():
+    """Global community statistics dashboard."""
+    period, category, since = _parse_filters()
+    cats = _categories()
+    return render_template('stats.html',
+                           period=period, category=category, categories=cats,
+                           counters=_counters(since, category),
+                           feed=_recent_feed(since, category),
+                           hot_topics=_hot_topics(since, category),
+                           distribution=_distribution(since, category),
+                           cat_bars=_category_bars(since, category),
+                           trend=_trend(since, category, period),
+                           hardest=_hardest_global(since, category))
+
+
+@stats_bp.route('/api/global')
+def api_global():
+    """JSON for AJAX filter updates (global)."""
+    period, category, since = _parse_filters()
+    return jsonify(counters=_counters(since, category),
+                   feed=_recent_feed(since, category),
+                   hot_topics=_hot_topics(since, category),
+                   distribution=_distribution(since, category),
+                   cat_bars=_category_bars(since, category),
+                   trend=_trend(since, category, period),
+                   hardest=_hardest_global(since, category))
+
+
+@stats_bp.route('/user/<int:user_id>')
+def user_stats(user_id):
+    """Per-user statistics deep-dive."""
+    user = User.query.get_or_404(user_id)
+    period, category, since = _parse_filters()
+    cats = _categories()
+    return render_template('user_stats.html',
+                           target_user=user,
+                           period=period, category=category, categories=cats,
+                           streaks=_user_streaks(user_id),
+                           scatter=_user_scatter(user_id, since, category),
+                           mastery=_user_mastery(user_id, since, category),
+                           comparison=_user_comparison(user_id, since, category, period),
+                           hardest=_user_hardest(user_id, since, category),
+                           personal_bests=_user_personal_bests(user_id))
+
+
+@stats_bp.route('/api/user/<int:user_id>')
+def api_user(user_id):
+    """JSON for AJAX filter updates (user)."""
+    User.query.get_or_404(user_id)
+    period, category, since = _parse_filters()
+    return jsonify(scatter=_user_scatter(user_id, since, category),
+                   mastery=_user_mastery(user_id, since, category),
+                   comparison=_user_comparison(user_id, since, category, period),
+                   hardest=_user_hardest(user_id, since, category))
+
+
+@stats_bp.route('/export/csv')
+@login_required
+def export_csv():
+    """Export global game results as CSV."""
+    period, category, since = _parse_filters()
+    q = _base_q(since, category).join(User, GameResult.user_id == User.id).order_by(GameResult.date.desc())
+
+    buf = io.StringIO()
+    buf.write('\ufeff')  # BOM for Excel
+    w = csv.writer(buf)
+    w.writerow(['Uživatel', 'Kvíz', 'Kategorie', 'Skóre', 'Max', '%', 'Čas (s)', 'Datum'])
+    for gr in q.all():
+        w.writerow([gr.user.name, gr.quiz.name, gr.quiz.category, gr.score, gr.max_score,
+                     round(gr.score / gr.max_score * 100, 1) if gr.max_score > 0 else 0,
+                     gr.time_spent, gr.date.strftime('%Y-%m-%d %H:%M:%S') if gr.date else ''])
+    buf.seek(0)
+    return Response(buf.getvalue(), mimetype='text/csv',
+                    headers={'Content-Disposition': 'attachment; filename=Braniac_statistiky.csv'})
+
+
+@stats_bp.route('/export/user/<int:user_id>/csv')
+@login_required
+def export_user_csv(user_id):
+    """Export a user's game history as CSV (self or admin only)."""
+    user = User.query.get_or_404(user_id)
+    if current_user.id != user_id and not current_user.is_admin():
+        abort(403)
+
+    period, category, since = _parse_filters()
+    q = GameResult.query.join(Quiz, GameResult.quiz_id == Quiz.id).filter(
+        GameResult.user_id == user_id)
+    if since:
+        q = q.filter(GameResult.date >= since)
+    if category:
+        q = q.filter(Quiz.category == category)
+    q = q.order_by(GameResult.date.desc())
+
+    buf = io.StringIO()
+    buf.write('\ufeff')
+    w = csv.writer(buf)
+    w.writerow(['Kvíz', 'Kategorie', 'Skóre', 'Max', '%', 'Čas (s)', 'Datum'])
+    for gr in q.all():
+        w.writerow([gr.quiz.name, gr.quiz.category, gr.score, gr.max_score,
+                     round(gr.score / gr.max_score * 100, 1) if gr.max_score > 0 else 0,
+                     gr.time_spent, gr.date.strftime('%Y-%m-%d %H:%M:%S') if gr.date else ''])
+    buf.seek(0)
+    return Response(buf.getvalue(), mimetype='text/csv',
+                    headers={'Content-Disposition': f'attachment; filename=Braniac_{user.name}_statistiky.csv'})

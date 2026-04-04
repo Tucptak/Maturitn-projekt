@@ -1,11 +1,11 @@
 {% extends 'base.html' %}
 
-{% block title %}QuizApp - Hlavní stránka{% endblock %}
+{% block title %}Braniac - Hlavní stránka{% endblock %}
 
 {% block content %}
 <section class="hero">
     <div class="hero-content">
-        <h1>Vítejte v QuizApp</h1>
+        <h1>Vítejte v Braniac</h1>
         <p>Testujte své znalosti, vytvářejte vlastní kvízy a soutěžte s ostatními!</p>
         <div class="hero-buttons">
             {% if current_user.is_authenticated %}
@@ -96,7 +96,7 @@
                 <p>Vytvořte vlastní kvíz s otázkami a odpověďmi A, B, C, D.</p>
             </div>
             <div class="feature-card">
-                <div class="feature-icon">🎯</div>
+                <div class="feature-icon">🧠</div>
                 <h3>Hrajte</h3>
                 <p>Vyberte si kvíz a odpovídejte na otázky v časovém limitu.</p>
             </div>
