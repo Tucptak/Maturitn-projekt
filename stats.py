@@ -419,7 +419,7 @@ def export_csv():
                      gr.time_spent, gr.date.strftime('%Y-%m-%d %H:%M:%S') if gr.date else ''])
     buf.seek(0)
     return Response(buf.getvalue(), mimetype='text/csv',
-                    headers={'Content-Disposition': 'attachment; filename=Braniac_statistiky.csv'})
+                    headers={'Content-Disposition': 'attachment; filename=Brainiac_statistiky.csv'})
 
 
 @stats_bp.route('/export/user/<int:user_id>/csv')
@@ -449,4 +449,4 @@ def export_user_csv(user_id):
                      gr.time_spent, gr.date.strftime('%Y-%m-%d %H:%M:%S') if gr.date else ''])
     buf.seek(0)
     return Response(buf.getvalue(), mimetype='text/csv',
-                    headers={'Content-Disposition': f'attachment; filename=Braniac_{user.name}_statistiky.csv'})
+                    headers={'Content-Disposition': f'attachment; filename=Brainiac_{user.name}_statistiky.csv'})

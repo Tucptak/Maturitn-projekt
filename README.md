@@ -1,4 +1,4 @@
-# Braniac - Maturitní projekt 2026
+# Brainiac - Maturitní projekt 2026
 
 Webová a desktopová quiz aplikace podobná Kahoot.
 

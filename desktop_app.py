@@ -1,5 +1,5 @@
 """
-Braniac - Desktopová aplikace (PyQt5)
+Brainiac - Desktopová aplikace (PyQt5)
 Maturitní projekt 2026
 
 Tato aplikace umožňuje hrát kvízy z databáze přes desktopové rozhraní.
@@ -326,7 +326,7 @@ class LoginWidget(QWidget):
         layout.setSpacing(20)
         
         # Logo/Název
-        title = QLabel("🧠 Braniac")
+        title = QLabel("🧠 Brainiac")
         title.setFont(QFont('Segoe UI', 32, QFont.Bold))
         title.setAlignment(Qt.AlignCenter)
         layout.addWidget(title)
@@ -1013,7 +1013,7 @@ class CustomTitleBar(QWidget):
         icon_label.setStyleSheet("font-size: 18px; background: transparent;")
         layout.addWidget(icon_label)
 
-        title_label = QLabel("Braniac")
+        title_label = QLabel("Brainiac")
         title_label.setStyleSheet("""
             font-size: 14px;
             font-weight: bold;
@@ -1106,7 +1106,7 @@ class MainWindow(QMainWindow):
             QTimer.singleShot(100, self._auto_login_with_token)
     
     def init_ui(self):
-        self.setWindowTitle("Braniac - Desktop")
+        self.setWindowTitle("Brainiac - Desktop")
         self.setMinimumSize(900, 700)
         self.setWindowFlags(Qt.FramelessWindowHint)
         self.setStyleSheet(StyleSheet.MAIN)

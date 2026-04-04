@@ -1,5 +1,5 @@
 /**
- * Braniac – Statistics chart rendering (Chart.js 4.x)
+ * Brainiac – Statistics chart rendering (Chart.js 4.x)
  */
 document.addEventListener('DOMContentLoaded', function () {
     var C = window.Chart;

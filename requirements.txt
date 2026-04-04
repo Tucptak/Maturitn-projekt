@@ -1,4 +1,4 @@
-# Braniac - Python Dependencies
+# Brainiac - Python Dependencies
 # Instalace: pip install -r requirements.txt
 
 # Flask a rozšíření

@@ -1,4 +1,4 @@
--- Braniac Database Schema
+-- Brainiac Database Schema
 -- MySQL / MariaDB
 -- Maturitní projekt 2026
 

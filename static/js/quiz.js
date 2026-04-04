@@ -1,5 +1,5 @@
 /**
- * Braniac - Logika hraní kvízu
+ * Brainiac - Logika hraní kvízu
  */
 
 // Stav hry

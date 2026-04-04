@@ -1,5 +1,5 @@
 /**
- * Braniac - Hlavní JavaScript
+ * Brainiac - Hlavní JavaScript
  */
 
 document.addEventListener('DOMContentLoaded', function() {
