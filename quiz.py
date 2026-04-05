@@ -322,9 +322,16 @@ def import_csv():
             errors.append(f'Řádek {i}: nedostatek sloupců (potřeba 6, nalezeno {len(row)})')
             continue
 
-        q_text = row[0].strip()
-        answers = [row[1].strip(), row[2].strip(), row[3].strip(), row[4].strip()]
-        correct_letter = row[5].strip().lower()
+        if len(row) > 6:
+            # Extra columns — commas in the question text; last col = correct,
+            # previous 4 = answers, everything before = question joined back.
+            correct_letter = row[-1].strip().lower()
+            answers = [row[-5].strip(), row[-4].strip(), row[-3].strip(), row[-2].strip()]
+            q_text = ','.join(row[:-5]).strip()
+        else:
+            q_text = row[0].strip()
+            answers = [row[1].strip(), row[2].strip(), row[3].strip(), row[4].strip()]
+            correct_letter = row[5].strip().lower()
 
         if not q_text:
             errors.append(f'Řádek {i}: prázdný text otázky')
@@ -695,7 +702,7 @@ def leaderboard():
         # ── Speed mode ──
         base = db.session.query(GameResult).filter(
             GameResult.max_score > 0,
-            GameResult.score >= GameResult.max_score * 0.3
+            GameResult.score >= GameResult.max_score * 0.5
         )
         if difficulty:
             base = base.join(Quiz, GameResult.quiz_id == Quiz.id).filter(Quiz.difficulty == difficulty)
@@ -709,7 +716,7 @@ def leaderboard():
             func.count(GameResult.id).label('qualifying_runs'),
             func.sum(perfect_expr).label('perfects')
         ).group_by(GameResult.user_id).having(
-            func.count(GameResult.id) > 0
+            func.count(GameResult.id) >= 5
         ).all()
 
         user_ids = [r.user_id for r in rows]
@@ -743,16 +750,20 @@ def leaderboard():
         if mode == 'overall':
             rows = base.with_entities(
                 GameResult.user_id, weighted_avg, games_played, perfects
-            ).group_by(GameResult.user_id).all()
+            ).group_by(GameResult.user_id).having(
+                func.count(GameResult.id) >= 10
+            ).all()
         elif mode == 'activity':
             rows = base.with_entities(
                 GameResult.user_id, games_played, weighted_avg, perfects
-            ).group_by(GameResult.user_id).all()
+            ).group_by(GameResult.user_id).having(
+                func.count(GameResult.id) >= 10
+            ).all()
         elif mode == 'perfects':
             rows = base.with_entities(
                 GameResult.user_id, perfects, weighted_avg, games_played
             ).group_by(GameResult.user_id).having(
-                func.sum(perfect_expr) > 0
+                db.and_(func.sum(perfect_expr) > 0, func.count(GameResult.id) >= 10)
             ).all()
 
         user_ids = [r.user_id for r in rows]

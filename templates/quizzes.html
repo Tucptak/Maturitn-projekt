@@ -46,7 +46,7 @@
     {% if quizzes %}
         <div class="quiz-grid">
             {% for quiz in quizzes %}
-                <div class="quiz-card">
+                <a href="{{ url_for('quiz.quiz_detail', quiz_id=quiz.id) }}" class="quiz-card">
                     <div class="quiz-card-header">
                         <span class="quiz-category">{{ quiz.category }}</span>
                         <span class="quiz-difficulty difficulty-{{ quiz.difficulty }}">
@@ -62,11 +62,8 @@
                     </div>
                     <div class="quiz-card-footer">
                         <span class="quiz-author">{{ quiz.author.name }}</span>
-                        <a href="{{ url_for('quiz.quiz_detail', quiz_id=quiz.id) }}" class="btn btn-primary btn-sm">
-                            Zobrazit
-                        </a>
                     </div>
-                </div>
+                </a>
             {% endfor %}
         </div>
     {% else %}

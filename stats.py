@@ -48,23 +48,27 @@ def _categories():
 # ── Global data builders ────────────────────────────────────────────────────
 
 def _counters(since, category):
-    total_games = _base_q(since, category).count()
+    q = GameResult.query
+    if since:
+        q = q.filter(GameResult.date >= since)
+    if category:
+        q = q.join(Quiz, GameResult.quiz_id == Quiz.id).filter(Quiz.category == category)
+    total_games = q.count()
 
     ua_q = db.session.query(func.count(UserAnswer.id)).join(
         GameResult, UserAnswer.game_id == GameResult.id
-    ).join(Quiz, GameResult.quiz_id == Quiz.id).filter(UserAnswer.is_correct == True)
+    ).filter(UserAnswer.is_correct == True)
     if since:
         ua_q = ua_q.filter(GameResult.date >= since)
     if category:
-        ua_q = ua_q.filter(Quiz.category == category)
+        ua_q = ua_q.join(Quiz, GameResult.quiz_id == Quiz.id).filter(Quiz.category == category)
     total_correct = ua_q.scalar() or 0
 
-    user_q = db.session.query(func.count(func.distinct(GameResult.user_id))).join(
-        Quiz, GameResult.quiz_id == Quiz.id)
+    user_q = db.session.query(func.count(func.distinct(GameResult.user_id)))
     if since:
         user_q = user_q.filter(GameResult.date >= since)
     if category:
-        user_q = user_q.filter(Quiz.category == category)
+        user_q = user_q.join(Quiz, GameResult.quiz_id == Quiz.id).filter(Quiz.category == category)
     total_players = user_q.scalar() or 0
 
     return {'total_games': total_games, 'total_correct': total_correct, 'total_players': total_players}
@@ -100,7 +104,9 @@ def _hot_topics(since, category, limit=8):
     if category:
         q = q.filter(Quiz.category == category)
     return [{'category': r[0], 'count': r[1]}
-            for r in q.group_by(Quiz.category).order_by(func.count(GameResult.id).desc()).limit(limit).all()]
+            for r in q.group_by(Quiz.category).having(
+                func.count(GameResult.id) >= 10
+            ).order_by(func.count(GameResult.id).desc()).limit(limit).all()]
 
 
 def _distribution(since, category):
@@ -125,7 +131,9 @@ def _category_bars(since, category, limit=8):
         q = q.filter(GameResult.date >= since)
     if category:
         q = q.filter(Quiz.category == category)
-    rows = q.group_by(Quiz.category).order_by(
+    rows = q.group_by(Quiz.category).having(
+        func.count(GameResult.id) >= 8
+    ).order_by(
         func.avg(GameResult.score * 100.0 / GameResult.max_score).desc()
     ).limit(limit).all()
     return {'labels': [r[0] for r in rows],
@@ -163,11 +171,33 @@ def _trend(since, category, period='30d'):
         slots = [f'{h:02d}:00' for h in range(24)]
     elif period == '7d':
         slots = [str((now - timedelta(days=6 - i)).date()) for i in range(7)]
+    elif period == '30d':
+        slots = [str((now - timedelta(days=29 - i)).date()) for i in range(30)]
     else:
-        slots = sorted(data.keys()) if data else []
+        # alltime: span from 90 days ago (or earliest data point) to today
+        if data:
+            earliest = min(datetime.strptime(k, '%Y-%m-%d') for k in data.keys())
+            start = min(earliest, now - timedelta(days=90))
+        else:
+            start = now - timedelta(days=90)
+        days = (now - start).days + 1
+        slots = [str((start + timedelta(days=i)).date()) for i in range(days)]
 
     labels = slots
     values = [data.get(s, 0) for s in slots]
+
+    # Downsample 30d / alltime to reduce dot clutter
+    step = 3 if period == '30d' else 9 if period not in ('today', '7d') else 0
+    if step and len(labels) > step:
+        new_labels, new_values = [], []
+        for i in range(0, len(labels), step):
+            chunk = values[i:i + step]
+            non_zero = [v for v in chunk if v]
+            avg = round(sum(non_zero) / len(non_zero), 1) if non_zero else 0
+            new_labels.append(labels[i])
+            new_values.append(avg)
+        labels, values = new_labels, new_values
+
     return {'labels': labels, 'data': values}
 
 
@@ -324,15 +354,15 @@ def _user_personal_bests(uid):
 
     bests = {}
     for cat, score, mx, time_s, qname, dt in rows:
-        pct = score / mx * 100
+        score_pct = score / mx * 100
         if cat not in bests:
             bests[cat] = {'category': cat,
-                          'best_pct': pct, 'best_quiz': qname, 'best_date': dt,
+                          'best_pct': score_pct, 'best_quiz': qname, 'best_date': dt,
                           'fastest': time_s, 'fast_quiz': qname, 'fast_date': dt}
         else:
             b = bests[cat]
-            if pct > b['best_pct'] or (pct == b['best_pct'] and dt and b['best_date'] and dt < b['best_date']):
-                b.update(best_pct=pct, best_quiz=qname, best_date=dt)
+            if score_pct > b['best_pct'] or (score_pct == b['best_pct'] and dt and b['best_date'] and dt < b['best_date']):
+                b.update(best_pct=score_pct, best_quiz=qname, best_date=dt)
             if time_s < b['fastest'] or (time_s == b['fastest'] and dt and b['fast_date'] and dt < b['fast_date']):
                 b.update(fastest=time_s, fast_quiz=qname, fast_date=dt)
 

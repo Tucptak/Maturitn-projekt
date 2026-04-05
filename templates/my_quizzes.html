@@ -6,9 +6,11 @@
 <div class="container">
     <div class="page-header">
         <h1>Moje kvízy</h1>
+        {% if quizzes %}
         <div class="header-actions">
             <a href="{{ url_for('quiz.create_quiz') }}" class="btn btn-primary">+ Vytvořit kvíz</a>
         </div>
+        {% endif %}
     </div>
     
     {% if quizzes %}

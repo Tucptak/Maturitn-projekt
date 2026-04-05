@@ -9,10 +9,10 @@
         <p>
             {% if quiz_id and selected_quiz %}
                 Nejlepší výsledky pro kvíz "{{ selected_quiz.name }}"
-            {% elif mode == 'overall' %}Skóre podle poměru správných odpovědí
-            {% elif mode == 'activity' %}Nejvíce odehraných kvízů
-            {% elif mode == 'perfects' %}Nejvíce dokončení se 100 % skóre
-            {% elif mode == 'speed' %}Nejrychlejší průměrný čas na otázku (min. 30 % skóre)
+            {% elif mode == 'overall' %}Skóre podle poměru správných odpovědí (min. 10 her)
+            {% elif mode == 'activity' %}Nejvíce odehraných kvízů (min. 10 her)
+            {% elif mode == 'perfects' %}Nejvíce dokončení se 100 % skóre (min. 10 her)
+            {% elif mode == 'speed' %}Nejrychlejší průměrný čas na otázku (min. 50 % skóre, min. 5 her)
             {% endif %}
         </p>
     </div>

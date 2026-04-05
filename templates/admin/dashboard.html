@@ -83,15 +83,6 @@
             <span class="nav-title">Správa kvízů</span>
             <span class="nav-desc">Zobrazit, upravit, smazat kvízy</span>
         </a>
-        <form method="POST" action="{{ url_for('admin.clear_all_results') }}" 
-              class="admin-nav-card" style="border: none; cursor: pointer;"
-              onsubmit="return confirm('Opravdu chcete smazat VŠECHNY výsledky a záznamy her? Tuto akci nelze vrátit!');">
-            <button type="submit" style="all: unset; width: 100%; text-align: center; cursor: pointer;">
-                <span class="nav-icon">🧹</span>
-                <span class="nav-title">Smazat všechny záznamy</span>
-                <span class="nav-desc">Smazat všechny výsledky a odpovědi ze všech kvízů</span>
-            </button>
-        </form>
     </div>
 </div>
 {% endblock %}

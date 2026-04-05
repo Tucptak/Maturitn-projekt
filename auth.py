@@ -6,6 +6,7 @@ from functools import wraps
 from flask import Blueprint, render_template, redirect, url_for, flash, request
 from flask_login import LoginManager, login_user, logout_user, login_required, current_user
 from werkzeug.utils import secure_filename
+from email_validator import validate_email, EmailNotValidError
 from database import db
 from models import User
 
@@ -57,7 +58,7 @@ def login():
         
         if not email or not password:
             flash('Vyplňte prosím email a heslo.', 'error')
-            return render_template('login.html')
+            return render_template('login.html', email=email)
         
         user = User.query.filter_by(email=email).first()
         
@@ -68,6 +69,7 @@ def login():
             return redirect(next_page if next_page else url_for('index'))
         else:
             flash('Neplatný email nebo heslo.', 'error')
+            return render_template('login.html', email=email)
     
     return render_template('login.html')
 
@@ -88,10 +90,21 @@ def register():
         errors = []
         if not name or len(name) < 2:
             errors.append('Jméno musí mít alespoň 2 znaky.')
-        if not email or '@' not in email:
+        try:
+            if not email:
+                raise EmailNotValidError('Prázdný email.')
+            emailinfo = validate_email(email, check_deliverability=False)
+            email = emailinfo.normalized
+        except EmailNotValidError:
             errors.append('Zadejte platný email.')
-        if not password or len(password) < 6:
-            errors.append('Heslo musí mít alespoň 6 znaků.')
+        if not password or len(password) < 8:
+            errors.append('Heslo musí mít alespoň 8 znaků.')
+        if password and not any(c.isupper() for c in password):
+            errors.append('Heslo musí obsahovat alespoň 1 velké písmeno.')
+        if password and not any(c.isdigit() for c in password):
+            errors.append('Heslo musí obsahovat alespoň 1 číslo.')
+        if password and not any(c in '!@#$%^&*()_+-=[]{}|;:,.<>?/~`' for c in password):
+            errors.append('Heslo musí obsahovat alespoň 1 speciální znak.')
         if password != password_confirm:
             errors.append('Hesla se neshodují.')
         
@@ -101,7 +114,7 @@ def register():
         if errors:
             for error in errors:
                 flash(error, 'error')
-            return render_template('register.html')
+            return render_template('register.html', name=name, email=email)
         
         # Vytvoření uživatele
         user = User(name=name, email=email)

@@ -12,7 +12,7 @@
                 <a href="{{ url_for('quiz.list_quizzes') }}" class="btn btn-primary btn-lg">Procházet kvízy</a>
                 <a href="{{ url_for('quiz.create_quiz') }}" class="btn btn-outline btn-lg">Vytvořit kvíz</a>
             {% else %}
-                <a href="{{ url_for('auth.register') }}" class="btn btn-primary btn-lg">Začít zdarma</a>
+                <a href="{{ url_for('auth.register') }}" class="btn btn-primary btn-lg">Registrace</a>
                 <a href="{{ url_for('auth.login') }}" class="btn btn-outline btn-lg">Přihlásit se</a>
             {% endif %}
         </div>

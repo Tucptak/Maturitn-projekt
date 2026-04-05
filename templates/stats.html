@@ -8,7 +8,12 @@
 
         <!-- Header + Filters -->
         <div class="stats-header">
-            <h1>📊 Statistiky komunity</h1>
+            <div class="stats-header-top">
+                <h1>📊 Statistiky komunity</h1>
+                {% if current_user.is_authenticated %}
+                <a href="{{ url_for('stats.user_stats', user_id=current_user.id) }}" class="btn btn-outline btn-sm">📈 Moje statistiky</a>
+                {% endif %}
+            </div>
             <form class="stats-filters" method="GET" action="{{ url_for('stats.global_stats') }}">
                 <div class="sf-group">
                     <label>Období</label>
@@ -99,12 +104,13 @@
                 <div class="stats-card">
                     <h3>🏆 Skóre podle kategorií</h3>
                     <div class="chart-wrap chart-square"><canvas id="catBarChart"></canvas></div>
-                    <p class="stats-hint">Top kategorie seřazené podle průměrného skóre.</p>
+                    <p class="stats-hint">Top kategorie seřazené podle průměrného skóre (min. 8 her).</p>
                 </div>
 
                 <div class="stats-card">
                     <h3>🔥 Populární kategorie</h3>
                     {% if hot_topics %}
+                    <p class="stats-hint">Kategorie s alespoň 10 odehranými hrami.</p>
                     <ul class="hot-list">
                         {% for h in hot_topics %}
                         <li class="hot-item">

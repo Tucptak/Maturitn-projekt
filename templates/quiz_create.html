@@ -240,12 +240,8 @@ function parseCSV(text) {
     for (let i = 0; i < text.length; i++) {
         const ch = text[i];
         if (ch === '"') {
-            if (inQuotes && i + 1 < text.length && text[i + 1] === '"') {
-                current += '"';
-                i++;
-            } else {
-                inQuotes = !inQuotes;
-            }
+            inQuotes = !inQuotes;
+            current += ch;
         } else if ((ch === '\n' || ch === '\r') && !inQuotes) {
             if (ch === '\r' && i + 1 < text.length && text[i + 1] === '\n') i++;
             if (current.trim()) lines.push(current);
