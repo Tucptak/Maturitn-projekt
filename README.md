@@ -1,6 +1,6 @@
 # Brainiac - Maturitní projekt 2026
 
-Webová a desktopová quiz aplikace podobná Kahoot.
+Webová a desktopová quiz aplikace
 
 ## 📋 Požadavky
 
