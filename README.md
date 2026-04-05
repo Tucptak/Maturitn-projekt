@@ -50,7 +50,7 @@ cp .env.example .env
 3. Upravte `.env` s vašimi údaji:
 ```
 DB_HOST=localhost
-DB_USER=vas_uzivatel
+DB_USER=vas_uzivatel(databáze je vytvořena na vyuka9 ve školní databázi na phpmyadmin)
 DB_PASSWORD=vase_heslo
 DB_NAME=quiz_app
 SECRET_KEY=nahodny-bezpecnostni-klic
@@ -71,6 +71,7 @@ Aplikace bude dostupná na: http://localhost:5000
 ```bash
 python desktop_app.py
 ```
+V průběhu aplikace je spouštěna když uživatel zapne kvíz
 
 ## 📁 Struktura projektu
 
