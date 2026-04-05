@@ -50,10 +50,12 @@
                                 </a>
                                 <form method="POST" action="{{ url_for('admin.clear_quiz_results', quiz_id=quiz.id) }}" 
                                       class="inline-form" onsubmit="return confirm('Opravdu chcete smazat všechny záznamy a výsledky pro kvíz {{ quiz.name }}?');">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                     <button type="submit" class="btn btn-sm btn-warning">🧹 Smazat záznamy</button>
                                 </form>
                                 <form method="POST" action="{{ url_for('admin.delete_quiz', quiz_id=quiz.id) }}" 
                                       class="inline-form" onsubmit="return confirm('Opravdu chcete smazat kvíz {{ quiz.name }}?');">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                     <button type="submit" class="btn btn-sm btn-danger">Smazat</button>
                                 </form>
                             </td>

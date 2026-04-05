@@ -48,6 +48,7 @@
                 </a>
                 <form method="POST" action="{{ url_for('quiz.delete_quiz', quiz_id=quiz.id) }}" 
                       class="inline-form" onsubmit="return confirm('Opravdu chcete smazat tento kvíz?');">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                     <button type="submit" class="btn btn-danger">🗑️ Smazat</button>
                 </form>
             {% endif %}

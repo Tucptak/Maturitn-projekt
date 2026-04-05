@@ -315,12 +315,38 @@ def _user_comparison(uid, since, category, period='30d'):
         slots = [f'{h:02d}:00' for h in range(24)]
     elif period == '7d':
         slots = [str((now - timedelta(days=6 - i)).date()) for i in range(7)]
+    elif period == '30d':
+        slots = [str((now - timedelta(days=29 - i)).date()) for i in range(30)]
     else:
-        slots = sorted(set(u) | set(g)) if (u or g) else []
+        # alltime: span from 90 days ago (or earliest data point) to today
+        all_keys = set(u) | set(g)
+        if all_keys:
+            earliest = min(datetime.strptime(k, '%Y-%m-%d') for k in all_keys)
+            start = min(earliest, now - timedelta(days=90))
+        else:
+            start = now - timedelta(days=90)
+        days = (now - start).days + 1
+        slots = [str((start + timedelta(days=i)).date()) for i in range(days)]
 
-    return {'labels': slots,
-            'user_data': [u.get(s) for s in slots],
-            'global_data': [g.get(s) for s in slots]}
+    labels = slots
+    user_vals = [u.get(s, 0) for s in slots]
+    global_vals = [g.get(s, 0) for s in slots]
+
+    # Downsample 30d / alltime to reduce dot clutter
+    step = 3 if period == '30d' else 9 if period not in ('today', '7d') else 0
+    if step and len(labels) > step:
+        new_labels, new_user, new_global = [], [], []
+        for i in range(0, len(labels), step):
+            u_chunk = [v for v in user_vals[i:i + step] if v]
+            g_chunk = [v for v in global_vals[i:i + step] if v]
+            new_labels.append(labels[i])
+            new_user.append(round(sum(u_chunk) / len(u_chunk), 1) if u_chunk else 0)
+            new_global.append(round(sum(g_chunk) / len(g_chunk), 1) if g_chunk else 0)
+        labels, user_vals, global_vals = new_labels, new_user, new_global
+
+    return {'labels': labels,
+            'user_data': user_vals,
+            'global_data': global_vals}
 
 
 def _user_hardest(uid, since, category, limit=10):

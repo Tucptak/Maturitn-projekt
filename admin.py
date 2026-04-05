@@ -51,6 +51,10 @@ def toggle_role(user_id):
     
     user = User.query.get_or_404(user_id)
     
+    if user.id == 1:
+        flash('Nelze změnit roli hlavního administrátora.', 'error')
+        return redirect(url_for('admin.users'))
+    
     if user.role == 'admin':
         user.role = 'user'
         flash(f'Uživatel {user.name} byl změněn na běžného uživatele.', 'success')
@@ -72,6 +76,10 @@ def delete_user(user_id):
         return redirect(url_for('admin.users'))
     
     user = User.query.get_or_404(user_id)
+    
+    if user.id == 1:
+        flash('Nelze smazat hlavního administrátora.', 'error')
+        return redirect(url_for('admin.users'))
     
     # Smazání souvisejících dat
     GameResult.query.filter_by(user_id=user_id).delete()

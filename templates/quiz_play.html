@@ -81,6 +81,7 @@
 <script>
 const QUIZ_ID = {{ quiz.id }};
 const TIME_LIMIT = {{ quiz.time_limit }};
+const CSRF_TOKEN = {{ csrf_token() | tojson }};
 </script>
 <script src="{{ url_for('static', filename='js/quiz.js') }}"></script>
 {% endblock %}

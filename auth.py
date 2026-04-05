@@ -201,18 +201,27 @@ def change_password():
     
     if not current_user.check_password(current_password):
         flash('Současné heslo není správné.', 'error')
-        return redirect(url_for('auth.profile'))
+        return redirect(url_for('auth.edit_profile'))
     
-    if len(new_password) < 6:
-        flash('Nové heslo musí mít alespoň 6 znaků.', 'error')
-        return redirect(url_for('auth.profile'))
-    
+    errors = []
+    if not new_password or len(new_password) < 8:
+        errors.append('Nové heslo musí mít alespoň 8 znaků.')
+    if new_password and not any(c.isupper() for c in new_password):
+        errors.append('Nové heslo musí obsahovat alespoň 1 velké písmeno.')
+    if new_password and not any(c.isdigit() for c in new_password):
+        errors.append('Nové heslo musí obsahovat alespoň 1 číslo.')
+    if new_password and not any(c in '!@#$%^&*()_+-=[]{}|;:,.<>?/~`' for c in new_password):
+        errors.append('Nové heslo musí obsahovat alespoň 1 speciální znak.')
     if new_password != confirm_password:
-        flash('Nová hesla se neshodují.', 'error')
-        return redirect(url_for('auth.profile'))
+        errors.append('Nová hesla se neshodují.')
+    
+    if errors:
+        for error in errors:
+            flash(error, 'error')
+        return redirect(url_for('auth.edit_profile'))
     
     current_user.set_password(new_password)
     db.session.commit()
     
     flash('Heslo bylo úspěšně změněno.', 'success')
-    return redirect(url_for('auth.profile'))
+    return redirect(url_for('auth.edit_profile'))

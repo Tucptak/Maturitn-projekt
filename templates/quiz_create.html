@@ -117,6 +117,7 @@ question,answer_a,answer_b,answer_c,answer_d,correct
     
     <div class="form-card">
         <form method="POST" class="quiz-form" id="manualForm">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <div class="form-group">
                 <label for="name">Název kvízu *</label>
                 <input type="text" id="name" name="name" required 
@@ -398,6 +399,13 @@ function quickImport() {
     form.enctype = 'multipart/form-data';
     form.action = '{{ url_for("quiz.import_csv") }}';
     form.style.display = 'none';
+    
+    // CSRF token
+    const csrfInput = document.createElement('input');
+    csrfInput.type = 'hidden';
+    csrfInput.name = 'csrf_token';
+    csrfInput.value = {{ csrf_token() | tojson }};
+    form.appendChild(csrfInput);
     
     // Add metadata from the manual form
     ['name', 'category', 'difficulty', 'time_limit'].forEach(field => {

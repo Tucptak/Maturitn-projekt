@@ -10,6 +10,7 @@
         <div class="form-card">
             <h2>Základní informace</h2>
             <form method="POST" class="quiz-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                 <div class="form-group">
                     <label for="name">Název kvízu</label>
                     <input type="text" id="name" name="name" required 
@@ -225,6 +226,7 @@
 {% block extra_js %}
 <script>
 const QUIZ_ID = {{ quiz.id }};
+const CSRF_TOKEN = {{ csrf_token() | tojson }};
 
 function showAddQuestionModal() {
     document.getElementById('addQuestionModal').classList.add('active');
@@ -252,7 +254,7 @@ async function addQuestion(event) {
     try {
         const response = await fetch(`/quiz/${QUIZ_ID}/add-question`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN },
             body: JSON.stringify({
                 text: formData.get('text'),
                 answers: answers
@@ -276,7 +278,8 @@ async function deleteQuestion(questionId) {
     
     try {
         const response = await fetch(`/question/${questionId}`, {
-            method: 'DELETE'
+            method: 'DELETE',
+            headers: { 'X-CSRFToken': CSRF_TOKEN }
         });
         
         const data = await response.json();
@@ -330,7 +333,7 @@ async function editQuestion(event) {
     try {
         const response = await fetch(`/question/${questionId}`, {
             method: 'PUT',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 'Content-Type': 'application/json', 'X-CSRFToken': CSRF_TOKEN },
             body: JSON.stringify({
                 text: formData.get('text'),
                 answers: answers

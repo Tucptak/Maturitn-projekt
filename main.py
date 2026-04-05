@@ -2,8 +2,9 @@
 Hlavní soubor Flask aplikace - Brainiac.
 """
 import os
-from flask import Flask, render_template
+from flask import Flask, render_template, request
 from dotenv import load_dotenv
+from flask_wtf.csrf import CSRFProtect
 
 # Načtení environment proměnných
 load_dotenv()
@@ -11,6 +12,9 @@ load_dotenv()
 # Inicializace Flask aplikace
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev-secret-key-change-in-production')
+
+# CSRF ochrana
+csrf = CSRFProtect(app)
 
 # Inicializace databáze
 from database import init_db, db
@@ -39,6 +43,7 @@ app.register_blueprint(admin_bp)
 
 from api import api_bp
 app.register_blueprint(api_bp)
+csrf.exempt(api_bp)
 
 from stats import stats_bp
 app.register_blueprint(stats_bp)

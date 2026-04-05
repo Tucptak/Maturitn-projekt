@@ -2,6 +2,13 @@
  * Brainiac - Logika hraní kvízu
  */
 
+function escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.appendChild(document.createTextNode(text));
+    return div.innerHTML;
+}
+
 // Stav hry
 let quizData = null;
 let currentQuestionIndex = 0;
@@ -75,7 +82,7 @@ function showQuestion(index) {
         btn.className = 'answer-btn';
         btn.innerHTML = `
             <span class="answer-label">${labels[i]}</span>
-            <span class="answer-text">${answer.text}</span>
+            <span class="answer-text">${escapeHtml(answer.text)}</span>
         `;
         btn.onclick = () => selectAnswer(answer.id);
         answersGridEl.appendChild(btn);
@@ -167,7 +174,8 @@ async function finishQuiz() {
         const response = await fetch(`/quiz/${QUIZ_ID}/submit`, {
             method: 'POST',
             headers: {
-                'Content-Type': 'application/json'
+                'Content-Type': 'application/json',
+                'X-CSRFToken': CSRF_TOKEN
             },
             body: JSON.stringify({
                 answers: userAnswers,
@@ -213,11 +221,11 @@ function showResults(result) {
         div.className = `result-item ${item.is_correct ? 'correct' : 'incorrect'}`;
         div.innerHTML = `
             <div class="result-question">
-                <strong>${index + 1}. ${item.question_text}</strong>
+                <strong>${index + 1}. ${escapeHtml(item.question_text)}</strong>
             </div>
             <div class="result-answer">
-                Vaše odpověď: ${item.selected_answer_text || 'Bez odpovědi'}
-                ${item.is_correct ? '✓' : `<br>Správná odpověď: ${item.correct_answer_text}`}
+                Vaše odpověď: ${escapeHtml(item.selected_answer_text) || 'Bez odpovědi'}
+                ${item.is_correct ? '✓' : `<br>Správná odpověď: ${escapeHtml(item.correct_answer_text)}`}
             </div>
         `;
         resultsList.appendChild(div);

@@ -26,7 +26,11 @@
                     <tr {% if user.id == current_user.id %}class="current-user"{% endif %}>
                         <td>{{ user.id }}</td>
                         <td class="user-cell">
-                            <span class="user-avatar">{{ user.name[0].upper() }}</span>
+                            {% if user.avatar and user.avatar != 'default.png' %}
+                                <img src="{{ url_for('static', filename='assets/' ~ user.avatar) }}" alt="{{ user.name }}" class="user-avatar user-avatar-img">
+                            {% else %}
+                                <span class="user-avatar">{{ user.name[0].upper() }}</span>
+                            {% endif %}
                             <span>{{ user.name }}</span>
                         </td>
                         <td>{{ user.email }}</td>
@@ -37,18 +41,22 @@
                         </td>
                         <td>{{ user.created_at.strftime('%d.%m.%Y') }}</td>
                         <td class="actions-cell">
-                            {% if user.id != current_user.id %}
+                            {% if user.id == current_user.id %}
+                                <span class="text-muted">Váš účet</span>
+                            {% elif user.id == 1 %}
+                                <span class="text-muted">Hlavní admin</span>
+                            {% else %}
                                 <form method="POST" action="{{ url_for('admin.toggle_role', user_id=user.id) }}" class="inline-form">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                     <button type="submit" class="btn btn-sm btn-outline">
                                         {% if user.role == 'admin' %}Odebrat admin{% else %}Povýšit na admin{% endif %}
                                     </button>
                                 </form>
                                 <form method="POST" action="{{ url_for('admin.delete_user', user_id=user.id) }}" 
                                       class="inline-form" onsubmit="return confirm('Opravdu chcete smazat uživatele {{ user.name }}?');">
+                                    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
                                     <button type="submit" class="btn btn-sm btn-danger">Smazat</button>
                                 </form>
-                            {% else %}
-                                <span class="text-muted">Váš účet</span>
                             {% endif %}
                         </td>
                     </tr>

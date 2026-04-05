@@ -26,7 +26,7 @@
         {% if recent_quizzes %}
             <div class="quiz-grid">
                 {% for quiz in recent_quizzes %}
-                    <div class="quiz-card">
+                    <a href="{{ url_for('quiz.quiz_detail', quiz_id=quiz.id) }}" class="quiz-card">
                         <div class="quiz-card-header">
                             <span class="quiz-category">{{ quiz.category }}</span>
                             <span class="quiz-difficulty difficulty-{{ quiz.difficulty }}">
@@ -41,10 +41,9 @@
                             <span>⏱️ {{ quiz.time_limit }}s / otázka</span>
                         </div>
                         <div class="quiz-card-footer">
-                            <span class="quiz-author">Autor: {{ quiz.author.name }}</span>
-                            <a href="{{ url_for('quiz.quiz_detail', quiz_id=quiz.id) }}" class="btn btn-primary btn-sm">Zobrazit</a>
+                            <span class="quiz-author">{{ quiz.author.name }}</span>
                         </div>
-                    </div>
+                    </a>
                 {% endfor %}
             </div>
         {% else %}
@@ -64,7 +63,7 @@
         
         <div class="quiz-grid">
             {% for item in popular_quizzes %}
-                <div class="quiz-card">
+                <a href="{{ url_for('quiz.quiz_detail', quiz_id=item.quiz.id) }}" class="quiz-card">
                     <div class="quiz-card-header">
                         <span class="quiz-category">{{ item.quiz.category }}</span>
                         <span class="play-count">🎮 {{ item.play_count }}x zahráno</span>
@@ -75,10 +74,9 @@
                         <span>⏱️ {{ item.quiz.time_limit }}s / otázka</span>
                     </div>
                     <div class="quiz-card-footer">
-                        <span class="quiz-author">Autor: {{ item.quiz.author.name }}</span>
-                        <a href="{{ url_for('quiz.quiz_detail', quiz_id=item.quiz.id) }}" class="btn btn-primary btn-sm">Hrát</a>
+                        <span class="quiz-author">{{ item.quiz.author.name }}</span>
                     </div>
-                </div>
+                </a>
             {% endfor %}
         </div>
     </div>

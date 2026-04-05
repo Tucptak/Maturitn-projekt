@@ -38,7 +38,11 @@
                 {% for user in recent_users %}
                     <div class="admin-list-item">
                         <div class="item-info">
-                            <span class="item-avatar">{{ user.name[0].upper() }}</span>
+                            {% if user.avatar and user.avatar != 'default.png' %}
+                                <img src="{{ url_for('static', filename='assets/' ~ user.avatar) }}" alt="{{ user.name }}" class="item-avatar item-avatar-img">
+                            {% else %}
+                                <span class="item-avatar">{{ user.name[0].upper() }}</span>
+                            {% endif %}
                             <div class="item-details">
                                 <span class="item-name">{{ user.name }}</span>
                                 <span class="item-meta">{{ user.email }}</span>

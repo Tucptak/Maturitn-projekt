@@ -1728,6 +1728,13 @@ body:has(.pinned-user-bar) .footer {
     font-weight: 600;
 }
 
+.item-avatar-img {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    object-fit: cover;
+}
+
 .item-name {
     font-weight: 500;
 }

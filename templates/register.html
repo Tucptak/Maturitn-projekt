@@ -11,6 +11,7 @@
         </div>
         
         <form method="POST" class="auth-form" novalidate>
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
             <div class="form-group">
                 <label for="name">Jméno</label>
                 <input type="text" id="name" name="name" required 
