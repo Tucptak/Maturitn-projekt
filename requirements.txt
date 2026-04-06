@@ -1,28 +1,28 @@
 # Brainiac - Python Dependencies
-# Instalace: pip install -r requirements.txt
+# Install: pip install -r requirements.txt
 
-# Flask a rozšíření
+# Flask
 Flask>=3.0.0
 Flask-SQLAlchemy>=3.1.0
 Flask-Login>=0.6.3
 Flask-WTF>=1.2.0
 
-# Databáze
+# Database
 PyMySQL>=1.1.0
 cryptography>=41.0.0
 
-# Bezpečnost a validace
+# Security
 Werkzeug>=3.0.0
 email-validator>=2.0.0
 
-# Environment proměnné
+# Environment
 python-dotenv>=1.0.0
 
-# Desktop aplikace (PyQt5)
+# Desktop app
 PyQt5>=5.15.0
 
-# HTTP požadavky (pro desktop app)
+# HTTP
 requests>=2.31.0
 
-# Testování (volitelné)
+# Testing
 pytest>=9.0.0
