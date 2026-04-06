@@ -1,12 +1,40 @@
 """
 Logika pro systém úspěchů (achievements).
+
+Tento modul implementuje celý životní cyklus achievementů:
+
+  1. DEFINICE (ACHIEVEMENT_DEFINITIONS) – 21 achievementů v 5 kategoriích:
+     - gameplay: počet odehraných her a celkových odpovědí
+     - creation: počet vytvořených kvízů
+     - mastery:  perfektní skóre a průměrná úspěšnost
+     - speed:    rychlé dokončení kvízu
+     - streak:   série správných odpovědí v řadě
+
+  2. SEED (seed_achievements) – při startu aplikace naplní tabulku 'achievements'
+     výchozími daty, pokud je prázdná (volá se z main.py).
+
+  3. KONTROLA (check_achievements) – po každém kvízu, vytvoření kvízu
+     nebo návštěvě profilu zkontroluje, zda uživatel splnil podmínky.
+     Nově získané achievementy se uloží do user_achievements (M:N).
+
+  4. ZOBRAZENI (get_user_achievements_data) – připraví data pro profil
+     včetně progressbarů a třídění (gold > silver > bronze).
+
+Volající moduly: quiz.py (po submit/create), auth.py (profil), main.py (seed)
 """
 from datetime import datetime
 from database import db
 from models import Achievement, UserAchievement, GameResult, Quiz, UserAnswer
 
 
-# Definice všech úspěchů pro seed
+# Definice všech úspěchů pro seed.
+# Každý achievement má:
+#   - name/description: zobrazení v UI
+#   - icon: SVG soubor ve static/assets/achievements/
+#   - tier: bronze/silver/gold (úrověň vzacnosti)
+#   - category: seskupení v profilu
+#   - requirement_type: jak se kontroluje splnění (viz is_achievement_met)
+#   - requirement_value: cílová hodnota
 ACHIEVEMENT_DEFINITIONS = [
     # === BRONZE - Gameplay ===
     {
@@ -207,7 +235,11 @@ ACHIEVEMENT_DEFINITIONS = [
 
 
 def seed_achievements():
-    """Naplní tabulku achievements výchozími daty, pokud je prázdná."""
+    """Naplní tabulku achievements výchozími daty, pokud je prázdná.
+    
+    Volá se jednou při startu aplikace z main.py.
+    Pokud tabulka již obsahuje data, nedělá nic (idempotent).
+    """
     if Achievement.query.count() > 0:
         return
     
@@ -219,7 +251,14 @@ def seed_achievements():
 
 
 def get_user_progress(user):
-    """Spočítá aktuální progres uživatele pro všechny typy achievementů."""
+    """Spočítá aktuální progres uživatele pro všechny typy achievementů.
+    
+    Vrací dict s klíči odpovídajícími requirement_type:
+      games_played, quizzes_created, score_average,
+      perfect_score, fast_completion, correct_streak, total_answers
+    
+    Tato funkce načítá všechny hry uživatele z DB a počítá statistiky v Pythonu.
+    """
     from sqlalchemy import func
     
     games = user.game_results
@@ -269,7 +308,11 @@ def get_user_progress(user):
 
 
 def get_progress_for_achievement(achievement, progress):
-    """Vrátí (current, target) pro daný achievement a aktuální progres."""
+    """Vrátí (current, target) pro daný achievement a aktuální progres.
+    
+    current = aktuální hodnota uživatele, target = požadovaná hodnota.
+    Používá se pro progressbar v UI i pro kontrolu splnění.
+    """
     req_type = achievement.requirement_type
     req_value = achievement.requirement_value
     
@@ -294,7 +337,11 @@ def get_progress_for_achievement(achievement, progress):
 
 
 def is_achievement_met(achievement, progress):
-    """Zkontroluje, zda je achievement splněn."""
+    """Zkontroluje, zda je achievement splněn.
+    
+    Pro většinu typů: current >= target.
+    Pro fast_completion (rychlost): current <= target (méně = lépe).
+    """
     current, target = get_progress_for_achievement(achievement, progress)
     
     if achievement.requirement_type == 'fast_completion':
@@ -308,6 +355,23 @@ def check_achievements(user):
     """
     Zkontroluje všechny achievementy pro uživatele.
     Vrátí seznam nově získaných Achievement objektů.
+    
+    Tok:
+      1. Spočítá aktuální progres (get_user_progress)
+      2. Načte všechny achievementy z DB
+      3. Vyřadí již získané (earned_ids)
+      4. Pro každý neziskáný zkontroluje podmínku (is_achievement_met)
+      5. Nově splněné uloží do user_achievements a commitne
+    
+    Voláno z:
+      - quiz.py:submit_quiz() → po odehrání kvízu
+      - quiz.py:create_quiz() → po vytvoření kvízu
+      - quiz.py:import_csv() → po importu kvízu
+      - auth.py:profile() → jako catch-all při návštěvě profilu
+    
+    Vrácené Achievement objekty se pak převedou na dict:
+      - V quiz.py:submit_quiz() → JSON pro quiz.js → main.js:showAchievementToast()
+      - V quiz.py:create_quiz/import_csv → flash zpráva pro base.html toast
     """
     progress = get_user_progress(user)
     all_achievements = Achievement.query.all()
@@ -341,8 +405,10 @@ def check_achievements(user):
 def get_user_achievements_data(user):
     """
     Vrátí strukturovaná data pro zobrazení na profilu.
-    Vrací seznam dicts s achievement info, earned status, progress.
-    """
+    Vrací seznam dicts s achievement info, earned status, progress.    
+    Každý dict obsahuje: id, name, description, icon, tier, category,
+    current/target (pro progressbar), percentage, earned, earned_at.
+    Seřazeno: získané (gold → bronze) pak nezískané (gold → bronze).    """
     progress = get_user_progress(user)
     all_achievements = Achievement.query.all()
     

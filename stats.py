@@ -1,5 +1,30 @@
 """
 Statistiky – globální dashboard a per-user deep-dive.
+
+Tento modul obsahuje komplexní SQL dotazy pro zobrazování statistik:
+
+Globální dashboard (/stats/):
+  - Počítadla: celkem her, správných odpovědí, aktivních hráčů
+  - Feed posledních her
+  - Hot topics (nejhranější kategorie)
+  - Histogram rozložení skóre (10% biny)
+  - Sloupcový graf kategorií podle průměrného skóre
+  - Trendová čára (průměrné skóre v čase)
+  - Nejtěžší otázky (nejvyšší error rate)
+
+Per-user dashboard (/stats/user/<id>):
+  - Scatter plot: přesnost vs rychlost
+  - Série (streaky): nejdelší řada perfektních výsledků
+  - Mastery: průměrné skóre podle kategorií
+  - Porovnání s globálním průměrem
+  - Osobní rekordy v každé kategorii
+
+Všechny grafy podporují filtry (period + category) přes query string.
+AJAX varianty (/stats/api/...) vrací JSON pro dynamické přenačítání bez refreshe.
+CSV export umožňuje stažení dat.
+
+Blueprint: stats_bp (URL prefix: /stats)
+Šablony: templates/stats.html, templates/user_stats.html
 """
 import csv
 import io
@@ -13,10 +38,14 @@ from models import User, Quiz, Question, Answer, GameResult, UserAnswer, pct
 stats_bp = Blueprint('stats', __name__, url_prefix='/stats')
 
 
-# ── Helpers ──────────────────────────────────────────────────────────────────
-
+# ── Helpers ──────────────────────────────────────────────────────────────────# Všechny helper funkce přijímají (since, category) filtry.
+# 'since' je datetime objekt nebo None, 'category' je string nebo ''.
 def _parse_filters():
-    """Parse time-range and category from query string."""
+    """Parse časového období a kategorie z query stringu.
+    
+    Používá se ve všech routach tohoto modulu.
+    Vrací (period_str, category_str, since_datetime_or_None).
+    """
     period = request.args.get('period', '30d')
     category = request.args.get('category', '')
     now = datetime.utcnow()
@@ -32,7 +61,11 @@ def _parse_filters():
 
 
 def _base_q(since=None, category=None):
-    """GameResult query with optional time / category filters."""
+    """Základní GameResult dotaz s volitelnými filtry.
+    
+    JOIN na Quiz je nutný pro filtrování podle kategorie.
+    Na tuto funkci navazují další buildery.
+    """
     q = GameResult.query.join(Quiz, GameResult.quiz_id == Quiz.id)
     if since:
         q = q.filter(GameResult.date >= since)
@@ -48,6 +81,10 @@ def _categories():
 # ── Global data builders ────────────────────────────────────────────────────
 
 def _counters(since, category):
+    """Základní počítadla: celkem her, správných odpovědí, aktivních hráčů.
+    
+    Každé počítadlo je samostatný SQL dotaz s COUNT/DISTINCT.
+    """
     q = GameResult.query
     if since:
         q = q.filter(GameResult.date >= since)
@@ -75,6 +112,10 @@ def _counters(since, category):
 
 
 def _recent_feed(since, category, limit=20):
+    """Posledních N odehraných her – feed na dashboardu.
+    
+    JOIN přes User pro jméno a avatar, přes Quiz pro název a kategorii.
+    """
     q = _base_q(since, category).join(
         User, GameResult.user_id == User.id
     ).order_by(GameResult.date.desc()).limit(limit)
@@ -96,6 +137,7 @@ def _recent_feed(since, category, limit=20):
 
 
 def _hot_topics(since, category, limit=8):
+    """Nejhranější kategorie (min 10 her) – GROUP BY Quiz.category."""
     q = db.session.query(
         Quiz.category, func.count(GameResult.id).label('cnt')
     ).join(Quiz, GameResult.quiz_id == Quiz.id)
@@ -110,7 +152,10 @@ def _hot_topics(since, category, limit=8):
 
 
 def _distribution(since, category):
-    """Score-percentage histogram in 10 % bins (real data, not a synthetic curve)."""
+    """Histogram rozložení skóre v 10% binech (reálná data, ne syntetická křivka).
+    
+    Rozdělí všechny výsledky do 10 košů: 0–10%, 10–20%, ..., 90–100%.
+    """
     rows = _base_q(since, category).filter(
         GameResult.max_score > 0
     ).with_entities(GameResult.score, GameResult.max_score).all()
@@ -121,7 +166,7 @@ def _distribution(since, category):
 
 
 def _category_bars(since, category, limit=8):
-    """Top categories by play volume with average score – horizontal bar chart."""
+    """Top kategorie podle průměrného skóre (min 8 her) – horizontální sloupcový graf."""
     q = db.session.query(
         Quiz.category,
         func.avg(GameResult.score * 100.0 / GameResult.max_score),
@@ -142,6 +187,12 @@ def _category_bars(since, category, limit=8):
 
 
 def _trend(since, category, period='30d'):
+    """Trendová čára průměrného skóre v čase.
+    
+    Pro 'today': seskupení po hodinách, jinak po dnech.
+    Pokud zvolené období nemá data, rozšíří se na všechna dostupná data.
+    Downsample: 30d → každý 3. den, alltime → každý 9. den (méně teček v grafu).
+    """
     effective = since or (datetime.utcnow() - timedelta(days=90))
     hourly = (period == 'today')
 
@@ -202,6 +253,12 @@ def _trend(since, category, period='30d'):
 
 
 def _hardest_global(since, category, limit=10):
+    """Nejtěžší otázky globálně – seřazené podle % špatných odpovědí.
+    
+    JOIN: Question → UserAnswer → GameResult → Quiz.
+    HAVING: min 3 pokusy (aby statistika měla smysl).
+    Používá CASE expression pro počítání špatných odpovědí.
+    """
     q = db.session.query(
         Question.text, Quiz.name, Quiz.category,
         func.count(UserAnswer.id).label('total'),
@@ -225,10 +282,10 @@ def _hardest_global(since, category, limit=10):
 # ── Per-user data builders ──────────────────────────────────────────────────
 
 def _user_scatter(uid, since, category):
-    """Accuracy vs speed – each point is one attempt.
+    """Scatter plot: přesnost (Y) vs rychlost (X) – každý bod = jeden pokus.
 
-    X = average seconds per question (time_spent / max_score).
-    Per-question timing is not available; this is the best proxy.
+    X = průměrný čas na otázku (time_spent / max_score).
+    Přesný čas na otázku není dostupný; toto je nejlepší aproximace.
     """
     q = GameResult.query.join(Quiz, GameResult.quiz_id == Quiz.id).filter(
         GameResult.user_id == uid, GameResult.max_score > 0)
@@ -242,6 +299,7 @@ def _user_scatter(uid, since, category):
 
 
 def _user_streaks(uid):
+    """Statistiky sérií: celkem správných, celkem odpovědí, nejdelší perfektní série."""
     results = GameResult.query.filter_by(user_id=uid).order_by(GameResult.date).all()
     total_correct = db.session.query(func.count(UserAnswer.id)).join(
         GameResult, UserAnswer.game_id == GameResult.id
@@ -263,7 +321,7 @@ def _user_streaks(uid):
 
 
 def _user_mastery(uid, since, category):
-    """Category bar chart – requires min 2 attempts per category."""
+    """Sloupcový graf: průměrné skóre uživatele v každé kategorii (min 2 pokusy)."""
     q = db.session.query(
         Quiz.category,
         func.avg(GameResult.score * 100.0 / GameResult.max_score),
@@ -282,7 +340,12 @@ def _user_mastery(uid, since, category):
 
 
 def _user_comparison(uid, since, category, period='30d'):
-    """User trend line overlaid on global average."""
+    """Trendová čára uživatele překrytá globálním průměrem.
+    
+    Dva datasety se stejnými časovými sloty (labels):
+      - user_data: průměrné skóre uživatele
+      - global_data: průměrné skóre všech hráčů
+    """
     effective = since or (datetime.utcnow() - timedelta(days=90))
     hourly = (period == 'today')
 
@@ -350,6 +413,7 @@ def _user_comparison(uid, since, category, period='30d'):
 
 
 def _user_hardest(uid, since, category, limit=10):
+    """Nejtěžší otázky pro konkrétního uživatele (kde nejvíc chyboval)."""
     q = db.session.query(
         Question.text, Quiz.name, Quiz.category,
         func.count(UserAnswer.id).label('total'),
@@ -372,6 +436,7 @@ def _user_hardest(uid, since, category, limit=10):
 
 
 def _user_personal_bests(uid):
+    """Osobní rekordy uživatele v každé kategorii (nejlepší skóre + nejrychlejší)."""
     rows = db.session.query(
         Quiz.category, GameResult.score, GameResult.max_score,
         GameResult.time_spent, Quiz.name, GameResult.date
@@ -400,10 +465,17 @@ def _user_personal_bests(uid):
 
 
 # ── Routes ──────────────────────────────────────────────────────────────────
+# Každá HTML routa předá data do templates/stats.html nebo user_stats.html.
+# Šablony uloží data do window.statsData (JavaScript objekt) →
+# stats.js je potom načte a vykreslí grafy pomocí Chart.js.
 
 @stats_bp.route('/')
 def global_stats():
-    """Global community statistics dashboard."""
+    """Global community statistics dashboard.
+    
+    Volá všechny _builder funkce a předá výsledky do stats.html.
+    Stats.html uloží data do window.statsData → stats.js je vykreslí.
+    """
     period, category, since = _parse_filters()
     cats = _categories()
     return render_template('stats.html',
@@ -419,7 +491,7 @@ def global_stats():
 
 @stats_bp.route('/api/global')
 def api_global():
-    """JSON for AJAX filter updates (global)."""
+    """JSON pro AJAX filtrování (globální) – voláno při změně period/category bez refreshe."""
     period, category, since = _parse_filters()
     return jsonify(counters=_counters(since, category),
                    feed=_recent_feed(since, category),
@@ -449,7 +521,7 @@ def user_stats(user_id):
 
 @stats_bp.route('/api/user/<int:user_id>')
 def api_user(user_id):
-    """JSON for AJAX filter updates (user)."""
+    """JSON pro AJAX filtrování (per-user) – voláno při změně period/category."""
     User.query.get_or_404(user_id)
     period, category, since = _parse_filters()
     return jsonify(scatter=_user_scatter(user_id, since, category),
@@ -461,7 +533,10 @@ def api_user(user_id):
 @stats_bp.route('/export/csv')
 @login_required
 def export_csv():
-    """Export global game results as CSV."""
+    """Export globálních výsledků jako CSV soubor.
+    
+    BOM (\ufeff) na začátku zajistí správné zobrazení češtiny v Excelu.
+    """
     period, category, since = _parse_filters()
     q = _base_q(since, category).join(User, GameResult.user_id == User.id).order_by(GameResult.date.desc())
 
@@ -481,7 +556,7 @@ def export_csv():
 @stats_bp.route('/export/user/<int:user_id>/csv')
 @login_required
 def export_user_csv(user_id):
-    """Export a user's game history as CSV (self or admin only)."""
+    """Export historie her uživatele jako CSV (jen vlastní nebo admin)."""
     user = User.query.get_or_404(user_id)
     if current_user.id != user_id and not current_user.is_admin():
         abort(403)

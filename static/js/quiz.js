@@ -1,7 +1,26 @@
 /**
  * Brainiac - Logika hraní kvízu
+ * 
+ * Tento soubor řídí celý průběh hraní kvízu na stránce quiz_play.html:
+ * 
+ *   1. initQuiz()     – načte otázky z /quiz/<id>/questions (quiz.py:get_quiz_questions)
+ *   2. showQuestion()  – zobrazí otázku a spustí časovač
+ *   3. selectAnswer()  – uživatel klikne na odpověď, uloží se do userAnswers[]
+ *   4. finishQuiz()    – odešle výsledky na /quiz/<id>/submit (quiz.py:submit_quiz)
+ *   5. showResults()   – zobrazí přehled správných/špatných odpovědí
+ *   6. exportResults() – stažení výsledků jako .txt soubor
+ * 
+ * Globální proměnné (definované v quiz_play.html šabloně):
+ *   QUIZ_ID    – ID kvízu
+ *   TIME_LIMIT – čas na otázku v sekundách
+ *   CSRF_TOKEN – token pro CSRF ochranu (Flask-WTF)
  */
 
+/**
+ * Escapování HTML – ochrana proti XSS.
+ * Používá se při vkládání textu otázek/odpovědí do innerHTML.
+ * Vytvoří textový uzel (automaticky escapuje) a vrátí HTML.
+ */
 function escapeHtml(text) {
     if (!text) return '';
     const div = document.createElement('div');
@@ -9,15 +28,15 @@ function escapeHtml(text) {
     return div.innerHTML;
 }
 
-// Stav hry
-let quizData = null;
-let currentQuestionIndex = 0;
-let userAnswers = [];
-let timerInterval = null;
-let timeRemaining = 0;
-let totalTimeSpent = 0;
-let questionStartTime = 0;
-let lastResult = null;
+// Stav hry – drží se v paměti po dobu hraní jednoho kvízu
+let quizData = null;           // JSON data z /quiz/<id>/questions
+let currentQuestionIndex = 0;  // index aktuální otázky (0-based)
+let userAnswers = [];          // pole odpovědí [{question_id, answer_id}]
+let timerInterval = null;      // reference na setInterval pro časovač
+let timeRemaining = 0;         // zbývající čas na aktuální otázku
+let totalTimeSpent = 0;        // celkový čas hraní (součet všech otázek)
+let questionStartTime = 0;     // Date.now() při zobrazení otázky
+let lastResult = null;         // výsledky pro exportResults()
 
 // DOM elementy
 const timerEl = document.getElementById('timer');
@@ -31,11 +50,15 @@ const questionContainer = document.getElementById('questionContainer');
 const quizResults = document.getElementById('quizResults');
 
 /**
- * Inicializace kvízu
+ * Inicializace kvízu – načte otázky ze serveru a zobrazí první.
+ * Volá se automaticky při DOMContentLoaded (viz konec souboru).
  */
 async function initQuiz() {
     try {
         const response = await fetch(`/quiz/${QUIZ_ID}/questions`);
+        // Vrátí JSON z quiz.py:get_quiz_questions():
+        // {quiz_id, quiz_name, time_limit, questions: [{id, text, answers: [{id, text}]}]}
+        // Pozn.: answers neobsahují is_correct – správnost se kontroluje až při submit
         quizData = await response.json();
         
         if (!quizData.questions || quizData.questions.length === 0) {
@@ -53,7 +76,9 @@ async function initQuiz() {
 }
 
 /**
- * Zobrazení otázky
+ * Zobrazení otázky na daném indexu.
+ * Pokud index >= počet otázek, zavolá finishQuiz().
+ * Aktualizuje progress bar, text otázky a vygeneruje tlačítka odpovědí.
  */
 function showQuestion(index) {
     if (index >= quizData.questions.length) {
@@ -94,7 +119,8 @@ function showQuestion(index) {
 }
 
 /**
- * Spuštění časovače
+ * Spuštění časovače – odpočítává TIME_LIMIT sekund.
+ * Při vypršení přeskočí na další otázku bez odpovědi (answer_id: null).
  */
 function startTimer() {
     clearInterval(timerInterval);
@@ -119,7 +145,7 @@ function startTimer() {
 }
 
 /**
- * Aktualizace zobrazení časovače
+ * Aktualizace zobrazení časovače – barva se mění: normál → warning (≤10s) → danger (≤5s).
  */
 function updateTimerDisplay() {
     timerEl.textContent = timeRemaining;
@@ -133,7 +159,8 @@ function updateTimerDisplay() {
 }
 
 /**
- * Výběr odpovědi
+ * Výběr odpovědi – zastaví časovač, uloží odpověď a přejde na další otázku.
+ * 300ms pauza dává uživateli vizuální zpětnou vazbu.
  */
 function selectAnswer(answerId) {
     clearInterval(timerInterval);
@@ -142,7 +169,8 @@ function selectAnswer(answerId) {
     const timeSpent = Math.round((Date.now() - questionStartTime) / 1000);
     totalTimeSpent += timeSpent;
     
-    // Uložení odpovědi
+    // Uložení odpovědi do pole → později se odešle jako JSON v finishQuiz()
+    // Formát shodný s api.py:api_submit_quiz() a quiz.py:submit_quiz()
     userAnswers.push({
         question_id: quizData.questions[currentQuestionIndex].id,
         answer_id: answerId
@@ -161,7 +189,9 @@ function selectAnswer(answerId) {
 }
 
 /**
- * Dokončení kvízu
+ * Dokončení kvízu – odešle všechny odpovědi na server přes POST.
+ * Hlavička X-CSRFToken je nutná pro CSRF ochranu (Flask-WTF).
+ * Server vrátí: skóre, přehled odpovědí, případně nové achievementy.
  */
 async function finishQuiz() {
     clearInterval(timerInterval);
@@ -171,23 +201,29 @@ async function finishQuiz() {
     document.querySelector('.quiz-game-header').style.display = 'none';
     
     try {
+        // Odešle všechny odpovědi na quiz.py:submit_quiz(quiz_id)
+        // X-CSRFToken hlavička je nutná pro Flask-WTF CSRF ochranu
+        // CSRF_TOKEN je definován v quiz_play.html šabloně jako {{ csrf_token() }}
         const response = await fetch(`/quiz/${QUIZ_ID}/submit`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'X-CSRFToken': CSRF_TOKEN
             },
+            // userAnswers + totalTimeSpent se předávají serveru ke zpracování
             body: JSON.stringify({
                 answers: userAnswers,
                 time_spent: totalTimeSpent
             })
         });
         
+        // result = JSON z quiz.py:submit_quiz():
+        // {success, score, max_score, percentage, time_spent, results: [...], new_achievements: [...]}
         const result = await response.json();
         
         if (result.success) {
             showResults(result);
-            // Zobrazení achievement pop-upů, pokud byly získány
+            // Pokud server vrátil nové achievementy → main.js:showAchievementQueue() je zobrazí
             if (result.new_achievements && result.new_achievements.length > 0 && typeof showAchievementQueue === 'function') {
                 showAchievementQueue(result.new_achievements);
             }
@@ -201,7 +237,8 @@ async function finishQuiz() {
 }
 
 /**
- * Zobrazení výsledků
+ * Zobrazení výsledků – přepne UI z otázky na přehled odpovědí.
+ * Správné odpovědi se označí zeleně, špatné červeně se správnou odpovědí.
  */
 function showResults(result) {
     lastResult = result;
@@ -233,7 +270,8 @@ function showResults(result) {
 }
 
 /**
- * Export výsledků do textového souboru
+ * Export výsledků do textového souboru (.txt) – stahuje se přes Blob URL.
+ * Název souboru se generuje z názvu kvízu (bez diakritiky) a data.
  */
 function exportResults() {
     if (!lastResult || !quizData) return;
@@ -280,5 +318,5 @@ function exportResults() {
     URL.revokeObjectURL(url);
 }
 
-// Spuštění kvízu při načtení stránky
+// Spuštění kvízu při načtení stránky (quiz_play.html)
 document.addEventListener('DOMContentLoaded', initQuiz);

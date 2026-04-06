@@ -3,6 +3,29 @@ Brainiac - Desktopová aplikace (PyQt5)
 Maturitní projekt 2026
 
 Tato aplikace umožňuje hrát kvízy z databáze přes desktopové rozhraní.
+
+Architektura:
+  MainWindow používá QStackedWidget pro přepínání mezi 4 obrazovkami:
+    0. LoginWidget       – přihlašovací formulář (email + heslo)
+    1. QuizListWidget    – výběr kvízu s filtry (kategorie, obtížnost)
+    2. QuizGameWidget    – hraní kvízu (otázky, časovač, odpovědi)
+    3. ResultsWidget     – výsledky s možností exportu do .txt
+
+Komunikace se serverem:
+  APIClient posílá HTTP požadavky na Flask API (api.py):
+    - POST /api/auth/token  – SSO přihlášení (token z webu)
+    - POST /api/login       – klasické přihlášení (email+heslo)
+    - GET  /api/quizzes     – seznam kvízů
+    - GET  /api/quiz/<id>/questions – otázky kvízu
+    - POST /api/quiz/<id>/submit   – odeslání výsledků
+
+SSO tok (automatické přihlášení z webu):
+  1. Uživatel na webu klikne "Hrát" → quiz.py vygeneruje SSO token
+  2. quiz.py spustí desktop_app.py s --token a --quiz-id
+  3. MainWindow._auto_login_with_token() pošle token na /api/auth/token
+  4. Po úspěšném přihlášení automaticky spustí daný kvíz
+
+Spuštění: python desktop_app.py [--quiz-id N] [--token TOKEN]
 """
 import sys
 import os
@@ -18,12 +41,17 @@ from PyQt5.QtWidgets import (
 from PyQt5.QtCore import Qt, QTimer, pyqtSignal, QPoint
 from PyQt5.QtGui import QFont, QPalette, QColor
 
-# Konfigurace API
+# Základní URL Flask serveru – desktop app posílá HTTP požadavky sem.
+# Výchozí: localhost:5000 (přepsat přes proměnnou prostředí API_URL).
 API_BASE_URL = os.getenv('API_URL', 'http://localhost:5000')
 
 
 class StyleSheet:
-    """Definice stylů pro aplikaci."""
+    """Definice CSS stylů pro celé PyQt5 okno (tmavý motiv).
+    
+    PyQt5 používá subset CSS syntaxe (QSS – Qt Style Sheets).
+    Styly se aplikují přes setStyleSheet() v MainWindow.init_ui().
+    """
     
     MAIN = """
         QMainWindow {
@@ -221,16 +249,20 @@ class StyleSheet:
 
 
 class APIClient:
-    """Klient pro komunikaci s Flask API."""
+    """Klient pro komunikaci s Flask API (api.py).
+    
+    Používá requests.Session() pro udržení cookies (Flask session)
+    mezi požadavky – po přihlášení se session cookie posílá automaticky.
+    """
     
     def __init__(self, base_url):
         self.base_url = base_url
-        self.session = requests.Session()
+        self.session = requests.Session()  # udržuje cookies mezi requesty
         self.token = None
-        self.user = None
+        self.user = None  # dict s user info po přihlášení
     
     def login(self, email, password):
-        """Přihlášení uživatele."""
+        """Přihlášení přes email+heslo → POST /api/login (api.py:api_login)."""
         try:
             # Pro desktop app používáme speciální API endpoint
             response = self.session.post(
@@ -247,7 +279,10 @@ class APIClient:
             return False, str(e)
     
     def token_login(self, token):
-        """Přihlášení pomocí SSO tokenu z webové aplikace."""
+        """Přihlášení pomocí SSO tokenu → POST /api/auth/token (api.py:api_token_login).
+        
+        Token vygeneroval quiz.py:play_quiz() a předal přes --token argument.
+        """
         try:
             response = self.session.post(
                 f"{self.base_url}/api/auth/token",
@@ -263,7 +298,7 @@ class APIClient:
             return False, str(e)
     
     def get_quizzes(self, category=None, difficulty=None):
-        """Získání seznamu kvízů."""
+        """Načtení seznamu kvízů → GET /api/quizzes (api.py:api_quizzes)."""
         try:
             params = {}
             if category:
@@ -282,7 +317,7 @@ class APIClient:
             return []
     
     def get_quiz_questions(self, quiz_id):
-        """Získání otázek kvízu."""
+        """Načtení otázek kvízu → GET /api/quiz/<id>/questions (api.py:api_quiz_questions)."""
         try:
             response = self.session.get(
                 f"{self.base_url}/api/quiz/{quiz_id}/questions"
@@ -294,7 +329,11 @@ class APIClient:
             return None
     
     def submit_quiz(self, quiz_id, answers, time_spent):
-        """Odeslání výsledků kvízu."""
+        """Odeslání výsledků → POST /api/quiz/<id>/submit (api.py:api_submit_quiz).
+        
+        answers = [{question_id, answer_id}, ...] – stejný formát jako quiz.js.
+        Výsledky se uloží do GameResult + UserAnswer v databázi.
+        """
         try:
             response = self.session.post(
                 f"{self.base_url}/api/quiz/{quiz_id}/submit",
@@ -311,9 +350,14 @@ class APIClient:
 
 
 class LoginWidget(QWidget):
-    """Widget pro přihlášení."""
+    """Widget pro přihlášení (obrazovka 0 v QStackedWidget).
     
-    login_successful = pyqtSignal(dict)
+    Obsahuje formulář s email + heslo.
+    Po úspěšném přihlášení emituje signál login_successful →
+    MainWindow.on_login_success() přepne na QuizListWidget.
+    """
+    
+    login_successful = pyqtSignal(dict)  # emituje {user: {...}} po úspěšném loginu
     
     def __init__(self, api_client):
         super().__init__()
@@ -413,10 +457,16 @@ class LoginWidget(QWidget):
 
 
 class QuizListWidget(QWidget):
-    """Widget pro výběr kvízu."""
+    """Widget pro výběr kvízu (obrazovka 1 v QStackedWidget).
     
-    quiz_selected = pyqtSignal(dict)
-    logout_requested = pyqtSignal()
+    Načítá kvízy z API (api.py:api_quizzes) a zobrazuje je v QListWidget.
+    Filtry: kategorie (QComboBox) + obtížnost (QComboBox).
+    Dvojklik nebo tlačítko "Hrát" emituje quiz_selected →
+    MainWindow.start_quiz() přepne na QuizGameWidget.
+    """
+    
+    quiz_selected = pyqtSignal(dict)    # emituje dict s quiz daty
+    logout_requested = pyqtSignal()      # přepne zpět na LoginWidget
     
     def __init__(self, api_client):
         super().__init__()
@@ -553,10 +603,21 @@ class QuizListWidget(QWidget):
 
 
 class QuizGameWidget(QWidget):
-    """Widget pro hraní kvízu."""
+    """Widget pro hraní kvízu (obrazovka 2 v QStackedWidget).
     
-    game_finished = pyqtSignal(dict)
-    back_requested = pyqtSignal()
+    Logika je stejná jako quiz.js na webu:
+      1. start_quiz()    – načte otázky z API
+      2. show_question()  – zobrazí otázku + spustí QTimer
+      3. select_answer()  – uloží odpověď, přejde na další
+      4. finish_quiz()    – odešle výsledky na API
+    
+    Časovač (QTimer): každou sekundu sníží time_remaining.
+    Při vypršení přeskočí na další otázku (answer_id=None).
+    Po dokončení emituje game_finished → MainWindow.show_results().
+    """
+    
+    game_finished = pyqtSignal(dict)   # emituje result dict z API
+    back_requested = pyqtSignal()       # přepne zpět na QuizListWidget
     
     def __init__(self, api_client):
         super().__init__()
@@ -799,10 +860,14 @@ class QuizGameWidget(QWidget):
 
 
 class ResultsWidget(QWidget):
-    """Widget pro zobrazení výsledků."""
+    """Widget pro zobrazení výsledků (obrazovka 3 v QStackedWidget).
     
-    back_requested = pyqtSignal()
-    replay_requested = pyqtSignal()
+    Zobrazuje skóre, čas, přehled správných/špatných odpovědí.
+    Tlačítka: zpět na seznam, exportovat do .txt, hrát znovu.
+    """
+    
+    back_requested = pyqtSignal()    # přepne na QuizListWidget
+    replay_requested = pyqtSignal()  # spustí stejný kvíz znovu
     
     def __init__(self):
         super().__init__()
@@ -992,7 +1057,11 @@ class ResultsWidget(QWidget):
 
 
 class CustomTitleBar(QWidget):
-    """Vlastní titulková lišta."""
+    """Vlastní titulková lišta (FramelessWindowHint – Qt nativní lišta je skrytá).
+    
+    Obsahuje: logo, název, tlačítka minimalizovat/maximalizovat/zavřít.
+    Drag & drop: mousePressEvent/mouseMoveEvent přesouvají okno.
+    """
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -1091,17 +1160,26 @@ class CustomTitleBar(QWidget):
 
 
 class MainWindow(QMainWindow):
-    """Hlavní okno aplikace."""
+    """Hlavní okno aplikace – spravuje QStackedWidget se 4 obrazovkami.
+    
+    Signály propojují widgety:
+      LoginWidget.login_successful  → on_login_success()  → přepne na QuizListWidget
+      QuizListWidget.quiz_selected  → start_quiz()         → přepne na QuizGameWidget
+      QuizGameWidget.game_finished  → show_results()        → přepne na ResultsWidget
+      ResultsWidget.back_requested  → show_quiz_list()      → přepne zpět
+      ResultsWidget.replay_requested→ replay_quiz()         → znovu spustí aktuální kvíz
+    """
     
     def __init__(self, target_quiz_id=None, sso_token=None):
         super().__init__()
-        self.api = APIClient(API_BASE_URL)
-        self.current_quiz = None
-        self.target_quiz_id = target_quiz_id
-        self.sso_token = sso_token
+        self.api = APIClient(API_BASE_URL)  # HTTP klient pro komunikaci s Flask API
+        self.current_quiz = None            # aktuálně hraný kvíz (dict)
+        self.target_quiz_id = target_quiz_id  # --quiz-id z příkazové řádky
+        self.sso_token = sso_token            # --token z příkazové řádky
         self.init_ui()
         
-        # Pokud máme SSO token, automaticky se přihlásíme
+        # Pokud máme SSO token, automaticky se přihlásíme po 100ms
+        # (QTimer.singleShot čeká na dokončení init_ui)
         if self.sso_token:
             QTimer.singleShot(100, self._auto_login_with_token)
     
@@ -1177,6 +1255,12 @@ class MainWindow(QMainWindow):
             )
     
     def on_login_success(self, data):
+        """Voláno po úspěšném přihlášení (z LoginWidget nebo SSO).
+        
+        data = {user: {id, name, email, role}} z API odpovědi.
+        Přepne na QuizListWidget a načte seznam kvízů.
+        Pokud byl zadán --quiz-id, automaticky spustí daný kvíz.
+        """
         user = data.get('user', {})
         self.quiz_list_widget.set_user(user)
         self.quiz_list_widget.load_quizzes()
@@ -1219,6 +1303,12 @@ class MainWindow(QMainWindow):
 
 
 def main():
+    """Vstupní bod desktopové aplikace.
+    
+    Argumenty příkazové řádky (volitelné, generuje quiz.py:play_quiz):
+      --quiz-id N   : ID kvízu pro přímé spuštění
+      --token TOKEN : SSO token pro automatické přihlášení
+    """
     import argparse
     parser = argparse.ArgumentParser()
     parser.add_argument('--quiz-id', type=int, default=None, help='ID kvízu pro přímé spuštění')

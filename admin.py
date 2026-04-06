@@ -1,5 +1,14 @@
 """
 Administrátorské routy.
+
+Tento modul obsahuje správu uživatelů a kvízů pro administrátory.
+Všechny routy vyžadují @login_required + @admin_required (z auth.py).
+
+Ochrana: uživatel s id=1 (hlavní admin) nelze smazat ani degradovat.
+         Admin nemůže změnit svou vlastní roli ani se sám smazat.
+
+Blueprint: admin_bp (URL prefix: /admin)
+Šablony: templates/admin/ (dashboard.html, users.html, quizzes.html)
 """
 from flask import Blueprint, render_template, redirect, url_for, flash, request
 from flask_login import login_required, current_user
@@ -14,7 +23,7 @@ admin_bp = Blueprint('admin', __name__, url_prefix='/admin')
 @login_required
 @admin_required
 def dashboard():
-    """Administrátorský dashboard."""
+    """Administrátorský dashboard – přehled statistik a posledních uživatelů/kvízů."""
     stats = {
         'total_users': User.query.count(),
         'total_quizzes': Quiz.query.count(),
@@ -44,7 +53,10 @@ def users():
 @login_required
 @admin_required
 def toggle_role(user_id):
-    """Přepnutí role uživatele."""
+    """Přepnutí role uživatele (user ↔ admin).
+    
+    Ochrany: admin nemůže změnit vlastní roli, uživatel id=1 je chráněný.
+    """
     if user_id == current_user.id:
         flash('Nemůžete změnit svou vlastní roli.', 'error')
         return redirect(url_for('admin.users'))
@@ -70,7 +82,11 @@ def toggle_role(user_id):
 @login_required
 @admin_required
 def delete_user(user_id):
-    """Smazání uživatele."""
+    """Smazání uživatele včetně jeho výsledků a kvízů.
+    
+    Manuálně maže GameResult a Quiz před smazáním uživatele,
+    protože SQLAlchemy cascade je nastaveno Unit of Work směrem.
+    """
     if user_id == current_user.id:
         flash('Nemůžete smazat sami sebe.', 'error')
         return redirect(url_for('admin.users'))
@@ -81,7 +97,9 @@ def delete_user(user_id):
         flash('Nelze smazat hlavního administrátora.', 'error')
         return redirect(url_for('admin.users'))
     
-    # Smazání souvisejících dat
+    # Manuálně maže GameResult a Quiz před smazáním uživatele,
+    # protože SQLAlchemy cascade je nastavené pouze směrem Quiz→Question→Answer,
+    # nikoli směrem User→GameResult (tam by orphan záznamy zůstaly).
     GameResult.query.filter_by(user_id=user_id).delete()
     Quiz.query.filter_by(author_id=user_id).delete()
     
@@ -119,7 +137,11 @@ def delete_quiz(quiz_id):
 @login_required
 @admin_required
 def clear_quiz_results(quiz_id):
-    """Smazání všech výsledků (záznamů, odpovědí) pro konkrétní kvíz."""
+    """Smazání všech výsledků pro konkrétní kvíz.
+    
+    Cascade v models.py (GameResult → UserAnswer, cascade='all, delete-orphan')
+    zajistí smazání všech UserAnswer záznamů při smazání GameResult.
+    """
     quiz = Quiz.query.get_or_404(quiz_id)
     
     results = GameResult.query.filter_by(quiz_id=quiz_id).all()
@@ -138,7 +160,11 @@ def clear_quiz_results(quiz_id):
 @login_required
 @admin_required
 def clear_all_results():
-    """Smazání všech výsledků a odpovědí ze všech kvízů."""
+    """Smazání všech výsledků a odpovědí ze všech kvízů.
+    
+    Nejprve smaže UserAnswer (závislé řádky), pak GameResult.
+    Bulk DELETE je rychlejší než mazat záznam po záznamu.
+    """
     # Nejprve smazat všechny UserAnswer, pak všechny GameResult
     UserAnswer.query.delete()
     count = GameResult.query.delete()

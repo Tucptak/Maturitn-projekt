@@ -1,5 +1,13 @@
 /**
  * Brainiac - Hlavní JavaScript
+ * 
+ * Načítá se na všech stránkách (přes base.html). Obsahuje:
+ *   - Mobilní navigace (hamburger toggle)
+ *   - Auto-hide flash zpráv (po 5 sekundách)
+ *   - Achievement pop-up notifikace (toast systém)
+ *   - Leaderboard: vyhledávání hráčů, filtr kvízu, výběr obtížnosti
+ *   - Leaderboard: mini-profil hover popover
+ *   - Pomocné funkce: fetchAPI(), formatTime()
  */
 
 document.addEventListener('DOMContentLoaded', function() {
@@ -13,7 +21,7 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
     
-    // Auto-hide flash messages
+    // Auto-hide flash zpráv po 5 sekundách s animací odjezdu doprava
     const flashMessages = document.querySelectorAll('.flash');
     flashMessages.forEach(function(flash) {
         setTimeout(function() {
@@ -24,7 +32,7 @@ document.addEventListener('DOMContentLoaded', function() {
         }, 5000);
     });
     
-    // Add slideOut animation
+    // Dynamické přidání slideOut animace do <head> (používá se pro flash zprávy)
     const style = document.createElement('style');
     style.textContent = `
         @keyframes slideOut {
@@ -36,7 +44,8 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 /**
- * Pomocná funkce pro HTTP požadavky
+ * Pomocná funkce pro HTTP požadavky – obal kolem fetch() s JSON hlavičkami.
+ * Automaticky parsuje JSON a vyhazuje chybu při ne-OK odpovědi.
  */
 async function fetchAPI(url, options = {}) {
     const defaultOptions = {
@@ -56,7 +65,7 @@ async function fetchAPI(url, options = {}) {
 }
 
 /**
- * Formátování času
+ * Formátování času v sekundách na formát M:SS (např. 125 → "2:05").
  */
 function formatTime(seconds) {
     const mins = Math.floor(seconds / 60);
@@ -66,6 +75,15 @@ function formatTime(seconds) {
 
 /**
  * Achievement Pop-Up Notification System
+ * 
+ * Zobrazuje toast notifikace při získání nového achievementu.
+ * Volá se ze dvou míst:
+ *   1. quiz.js:finishQuiz() → po odeslání kvízu, server vrátí new_achievements[]
+ *   2. base.html → flash zprávy s prefixem 'achievement:' (např. po importu CSV)
+ * 
+ * Data formát: {name, icon (SVG soubor), tier ('bronze'/'silver'/'gold')}
+ * Více achievementů se zobrazuje postupně s 800ms odstupem.
+ * Každý toast zmizí po 4 sekundách.
  */
 function showAchievementToast(achievement) {
     const container = document.getElementById('achievement-notifications');
@@ -104,7 +122,8 @@ function showAchievementQueue(achievements) {
 }
 
 /**
- * Leaderboard – live player-name search (starts-with, case-insensitive)
+ * Leaderboard – živé vyhledávání hráčů podle jména (starts-with, case-insensitive).
+ * Filtruje řádky tabulky na klientské straně bez požadavku na server.
  */
 (function() {
     var search = document.getElementById('leaderboard-search');
@@ -126,7 +145,8 @@ function showAchievementQueue(achievements) {
 })();
 
 /**
- * Leaderboard – quiz search filter (custom dropdown)
+ * Leaderboard – filtr kvízu (custom dropdown s vyhledáváním).
+ * Při výběru kvízu automaticky odesle formulář (filtr se projeví na serveru).
  */
 (function() {
     var input = document.getElementById('quiz-search');
@@ -176,7 +196,8 @@ function showAchievementQueue(achievements) {
 })();
 
 /**
- * Leaderboard – custom difficulty select
+ * Leaderboard – custom dropdown pro výběr obtížnosti.
+ * Při výběru automaticky odesle formulář.
  */
 (function() {
     var select = document.getElementById('difficulty-select');
@@ -208,7 +229,14 @@ function showAchievementQueue(achievements) {
 })();
 
 /**
- * Leaderboard – mini-profile hover popover
+ * Leaderboard – mini-profil hover popover.
+ * Při najetí myší na jméno hráče načte profil z /leaderboard/profile/<id>
+ * (quiz.py:mini_profile) a zobrazí popup s detailními statistikami.
+ * 
+ * Data tok: main.js fetch → quiz.py:mini_profile() → models.py:User.get_stats()
+ *           + achievements.py:get_user_achievements_data() → JSON → buildHtml()
+ * 
+ * Výsledky se cachují (objekt cache), aby se nenačítaly opakovaně.
  */
 function _mpEsc(str) {
     var d = document.createElement('div');

@@ -1,5 +1,19 @@
 """
 Autentizační routy a logika.
+
+Tento modul spravuje:
+  - Přihlášení / registraci / odhlášení uživatelů
+  - Profil uživatele (zobrazení, úprava, změna hesla)
+  - Admin dekorátor (@admin_required) používaný i v admin.py
+  - Flask-Login konfiguraci (user_loader, unauthorized_handler)
+
+Bezpečnost:
+  - Hesla se ukládají jako hash (werkzeug pbkdf2, viz models.py User.set_password)
+  - Validace síly hesla: min 8 znaků, 1 velké písmeno, 1 číslo, 1 speciální znak
+  - Email validace pomocí email_validator knihovny
+  - První registrovaný uživatel se automaticky stane adminem
+
+Blueprint: auth_bp (bez URL prefixu – routy jsou přímo /login, /register, …)
 """
 import os
 from functools import wraps
@@ -13,6 +27,7 @@ from models import User
 auth_bp = Blueprint('auth', __name__)
 login_manager = LoginManager()
 
+# Povolené přípony pro upload avataru
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif'}
 
 
@@ -22,7 +37,12 @@ def allowed_file(filename):
 
 
 def admin_required(f):
-    """Dekorátor pro povinné admin oprávnění."""
+    """Dekorátor pro povinné admin oprávnění.
+    
+    Používá se v admin.py na všech admin routy.
+    Vrací na hlavní stránku s chybovou hláškou, pokud uživatel není admin.
+    Funguje spolu s @login_required (oba dekorátory se kombinují).
+    """
     @wraps(f)
     def decorated_function(*args, **kwargs):
         if not current_user.is_authenticated or not current_user.is_admin():
@@ -34,7 +54,12 @@ def admin_required(f):
 
 @login_manager.user_loader
 def load_user(user_id):
-    """Načte uživatele podle ID."""
+    """Načte uživatele podle ID.
+    
+    Flask-Login volá tuto funkci automaticky při každém požadavku,
+    aby načetl přihlášeného uživatele z DB na základě session cookie.
+    Vrácený objekt je dostupný jako 'current_user' v celé aplikaci.
+    """
     return User.query.get(int(user_id))
 
 
@@ -47,7 +72,13 @@ def unauthorized():
 
 @auth_bp.route('/login', methods=['GET', 'POST'])
 def login():
-    """Přihlášení uživatele."""
+    """Přihlášení uživatele.
+    
+    GET: zobrazí formulář (templates/login.html)
+    POST: ověří email + heslo, přihlásí přes Flask-Login, přesměruje na index.
+    Při neúspěchu zachová vyplněný email ve formuláři (email=email).
+    Parametr 'next' umožňuje přesměrování na původní stránku po přihlášení.
+    """
     if current_user.is_authenticated:
         return redirect(url_for('index'))
     
@@ -60,11 +91,15 @@ def login():
             flash('Vyplňte prosím email a heslo.', 'error')
             return render_template('login.html', email=email)
         
+        # Hledá uživatele v DB podle emailu (models.py:User)
         user = User.query.filter_by(email=email).first()
         
         if user and user.check_password(password):
+            # login_user() uloží user.id do Flask session cookie →
+            # při dalších požadavcích load_user() načte uživatele z DB
             login_user(user, remember=remember)
             flash(f'Vítejte zpět, {user.name}!', 'success')
+            # next_page = URL kam chtěl uživatel jít před přesměrováním na login
             next_page = request.args.get('next')
             return redirect(next_page if next_page else url_for('index'))
         else:
@@ -76,7 +111,12 @@ def login():
 
 @auth_bp.route('/register', methods=['GET', 'POST'])
 def register():
-    """Registrace nového uživatele."""
+    """Registrace nového uživatele.
+    
+    Validace: jméno (min 2 znaky), email (unikátní + validní formát),
+    heslo (min 8 znaků + 1 velké + 1 číslo + 1 speciální), shoda hesel.
+    První uživatel v DB se automaticky stane adminem (user.role = 'admin').
+    """
     if current_user.is_authenticated:
         return redirect(url_for('index'))
     
@@ -116,11 +156,12 @@ def register():
                 flash(error, 'error')
             return render_template('register.html', name=name, email=email)
         
-        # Vytvoření uživatele
+        # Vytvoření uživatele – heslo se hashuje v set_password() (models.py)
         user = User(name=name, email=email)
         user.set_password(password)
         
-        # První uživatel bude admin
+        # První registrovaný uživatel se automaticky stane adminem,
+        # aby aplikace měla vždy alespoň jednoho správce.
         if User.query.count() == 0:
             user.role = 'admin'
         
@@ -145,16 +186,25 @@ def logout():
 @auth_bp.route('/profile')
 @login_required
 def profile():
-    """Profil uživatele."""
+    """Profil uživatele – statistiky, poslední hry, achievementy.
+    
+    check_achievements() se volá jako "catch-all" – udělí achievementy,
+    které uživatel získal, ale ještě mu nebyly přiděleny (např. při restartu DB).
+    Šablona: templates/profile.html
+    """
     from achievements import check_achievements, get_user_achievements_data
     
-    # Kontrola achievementů jako catch-all
+    # check_achievements() → achievements.py → vrátí list nově získaných Achievement objektů
     new_achievements = check_achievements(current_user)
     
+    # get_stats() → models.py → vrátí dict: {total_games, average_score, best_score, total_quizzes_created}
     stats = current_user.get_stats()
-    recent_games = current_user.game_results[-10:][::-1]  # Posledních 10 her
+    # game_results = relace z models.py (1:N User→GameResult), [-10:] = posledních 10, [::-1] = od nejnovějšího
+    recent_games = current_user.game_results[-10:][::-1]
+    # get_user_achievements_data() → achievements.py → vrátí list dicts s progressbary pro šablonu
     achievements_data = get_user_achievements_data(current_user)
     
+    # Vše se předá do templates/profile.html jako kontextové proměnné
     return render_template('profile.html',
                            stats=stats,
                            recent_games=recent_games,
@@ -165,7 +215,11 @@ def profile():
 @auth_bp.route('/profile/edit', methods=['GET', 'POST'])
 @login_required
 def edit_profile():
-    """Úprava profilu uživatele."""
+    """Úprava profilu uživatele – jméno a avatar.
+    
+    Avatar se ukládá do static/assets/ s prefixem user_{id}_ pro unikátnost.
+    secure_filename() očistí název souboru od nebezpečných znaků.
+    """
     if request.method == 'POST':
         name = request.form.get('name', '').strip()
         
@@ -194,7 +248,7 @@ def edit_profile():
 @auth_bp.route('/profile/change-password', methods=['POST'])
 @login_required
 def change_password():
-    """Změna hesla."""
+    """Změna hesla – vyžaduje současné heslo + stejná pravidla síly jako při registraci."""
     current_password = request.form.get('current_password', '')
     new_password = request.form.get('new_password', '')
     confirm_password = request.form.get('confirm_password', '')

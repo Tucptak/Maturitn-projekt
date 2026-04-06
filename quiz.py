@@ -1,5 +1,20 @@
 """
 Routy pro správu a hraní kvízů.
+
+Největší modul aplikace – obsahuje:
+  - Výpis kvízů s filtrováním (kategorie, obtížnost)
+  - Detail kvízu a detail pokusu (attempt)
+  - Spuštění desktopové aplikace s SSO tokenem (play_quiz)
+  - API endpoint pro získání otázek (quiz.js ho volá přes fetch)
+  - Odeslání a vyhodnocení výsledků (submit_quiz)
+  - Import kvízu z CSV souboru (import_csv)
+  - CRUD operace: vytvoření, úprava, smazání kvízu a otázek
+  - Žebříček (leaderboard) s více režimy
+  - Mini-profil hráče pro leaderboard hover
+  - Stránka "Moje kvízy"
+
+Blueprint: quiz_bp (bez URL prefixu)
+Propojeno s: quiz.js (frontendová logika hraní), api.py (desktopová verze)
 """
 import csv
 import io
@@ -16,7 +31,11 @@ quiz_bp = Blueprint('quiz', __name__)
 
 @quiz_bp.route('/quizzes')
 def list_quizzes():
-    """Seznam všech kvízů."""
+    """Seznam všech kvízů s volitelným filtrem podle kategorie a obtížnosti.
+    
+    Query parametry: ?category=X&difficulty=Y
+    Šablona: templates/quizzes.html
+    """
     category = request.args.get('category', '')
     difficulty = request.args.get('difficulty', '')
     
@@ -50,7 +69,12 @@ def quiz_detail(quiz_id):
 @quiz_bp.route('/attempt/<int:game_id>')
 @login_required
 def attempt_detail(game_id):
-    """Detail pokusu – shrnutí odpovědí."""
+    """Detail pokusu – shrnutí odpovědí po dohrání kvízu.
+    
+    Zobrazuje každou otázku, co uživatel zvolil a co bylo správně.
+    Přístup má jen vlastník pokusu nebo admin.
+    Šablona: templates/attempt_detail.html
+    """
     game = GameResult.query.get_or_404(game_id)
 
     if game.user_id != current_user.id and not current_user.is_admin():
@@ -91,12 +115,23 @@ def attempt_detail(game_id):
                            percentage=percentage)
 
 
+# Globální reference na běžící desktopovou aplikaci.
+# Umožňuje ukončit předchozí instanci před spuštěním nové.
 _desktop_process = None
 
 @quiz_bp.route('/quiz/<int:quiz_id>/play')
 @login_required
 def play_quiz(quiz_id):
-    """Spustí desktopovou aplikaci pro hraní kvízu s automatickým přihlášením."""
+    """Spustí desktopovou aplikaci (desktop_app.py) pro hraní kvízu.
+    
+    Tok:
+      1. Ukončí případnou běžící instanci desktopové aplikace
+      2. Vygeneruje jednorázový SSO token (api.py: generate_sso_token)
+      3. Spustí desktop_app.py jako subprocess s parametry --quiz-id a --token
+      4. Desktop app se připojí na /api/auth/token a ověří token
+    
+    SSO token expiruje za 2 minuty a je jednorázový (viz api.py).
+    """
     global _desktop_process
     quiz = Quiz.query.get_or_404(quiz_id)
     
@@ -133,7 +168,12 @@ def play_quiz(quiz_id):
 @quiz_bp.route('/quiz/<int:quiz_id>/questions', methods=['GET'])
 @login_required
 def get_quiz_questions(quiz_id):
-    """API endpoint pro získání otázek kvízu."""
+    """API endpoint pro získání otázek kvízu (JSON).
+    
+    Volá ho quiz.js přes fetch() při inicializaci hry.
+    Vrací: quiz_id, quiz_name, time_limit, questions[{id, text, answers[{id, text}]}]
+    Odpovědi neobsahují is_correct – správnost se kontroluje až při submit.
+    """
     quiz = Quiz.query.get_or_404(quiz_id)
     
     questions_data = []
@@ -159,22 +199,34 @@ def get_quiz_questions(quiz_id):
 @quiz_bp.route('/quiz/<int:quiz_id>/submit', methods=['POST'])
 @login_required
 def submit_quiz(quiz_id):
-    """Odeslání výsledků kvízu."""
+    """Odeslání výsledků kvízu (voláno z quiz.js přes fetch POST s JSON).
+    
+    Tok:
+      1. Přijme JSON s odpověd'mi a časem {answers: [...], time_spent}
+      2. Vytvoří GameResult záznam v DB
+      3. Pro každou odpověď zkontroluje správnost a uloží UserAnswer
+      4. Zkontroluje achievementy (check_achievements z achievements.py)
+      5. Vrátí JSON s výsledky, skóre a případně novými achievementy
+    
+    CSRF token se přenáší přes hlavičku X-CSRFToken (viz quiz.js: finishQuiz).
+    """
     quiz = Quiz.query.get_or_404(quiz_id)
+    # data = JSON z quiz.js:finishQuiz() → fetch POST s {answers: [...], time_spent}
     data = request.get_json()
     
     if not data or 'answers' not in data:
         return jsonify({'error': 'Neplatná data'}), 400
     
+    # answers = [{question_id: N, answer_id: N}, ...] z quiz.js:userAnswers[]
     answers = data['answers']
-    time_spent = data.get('time_spent', 0)
+    time_spent = data.get('time_spent', 0)  # celkový čas z quiz.js:totalTimeSpent
     
-    # Minimální čas 0.5s na otázku
+    # Minimální čas 0.5s na otázku – ochrana proti příliš rychlému odeslání
     min_time = max(1, int(len(quiz.questions) * 0.5))
     if time_spent < min_time:
         time_spent = min_time
 
-    # Výpočet skóre
+    # Výpočet skóre – počítá správné odpovědi
     score = 0
     max_score = len(quiz.questions)
     
@@ -187,9 +239,10 @@ def submit_quiz(quiz_id):
         time_spent=time_spent
     )
     db.session.add(game_result)
+    # flush() získá ID záznamu bez commitování transakce – potřebujeme ID pro UserAnswer
     db.session.flush()  # Pro získání ID
     
-    # Zpracování odpovědí
+    # Zpracování odpovědí – pro každou otázku najde správnou odpověď a porovná
     results = []
     for answer_data in answers:
         question_id = answer_data.get('question_id')
@@ -236,19 +289,23 @@ def submit_quiz(quiz_id):
     game_result.score = score
     db.session.commit()
     
-    # Kontrola achievementů
+    # check_achievements() → achievements.py:check_achievements() → vrátí list Achievement objektů
+    # Každý Achievement má: name, description, icon (SVG), tier (bronze/silver/gold)
     from achievements import check_achievements
     new_achievements = check_achievements(current_user)
+    # Převede Achievement objekty na dict pro JSON odpověď → quiz.js:showResults()
     achievements_popup = [
         {
             'name': a.name,
             'description': a.description,
-            'icon': a.icon,
-            'tier': a.tier,
+            'icon': a.icon,     # název SVG souboru v static/assets/achievements/
+            'tier': a.tier,     # 'bronze'/'silver'/'gold' – určuje barvu toastu v main.js
         }
         for a in new_achievements
     ]
     
+    # Výsledek se vrátí do quiz.js:finishQuiz() → result.json()
+    # quiz.js pak volá showResults(result) + showAchievementQueue(result.new_achievements)
     return jsonify({
         'success': True,
         'score': score,
@@ -263,7 +320,16 @@ def submit_quiz(quiz_id):
 @quiz_bp.route('/quiz/import-csv', methods=['POST'])
 @login_required
 def import_csv():
-    """Import kvízu z CSV souboru."""
+    """Import kvízu z CSV souboru.
+    
+    Formát CSV:
+      - Volitelné metadata řádky: name, category, difficulty, time_limit (klíč, hodnota)
+      - Hlavička: question, answer_a, answer_b, answer_c, answer_d, correct
+      - Datové řádky: text otázky, 4 odpovědi, správná odpověď (A/B/C/D)
+    
+    Metadata priority: formulářová pole > CSV metadata > výchozí hodnoty.
+    Limit velikosti: 1 MB. Podporuje UTF-8 (s BOM i bez) a Latin-1 fallback.
+    """
     csv_file = request.files.get('csv_file')
     if not csv_file or not csv_file.filename:
         flash('Nebyl vybrán žádný soubor.', 'error')
@@ -298,7 +364,8 @@ def import_csv():
         flash('CSV soubor musí obsahovat hlavičku a alespoň jeden řádek s otázkou.', 'error')
         return redirect(url_for('quiz.create_quiz'))
 
-    # Extract metadata rows before the question header
+    # Extrakce metadat z řádků před hlavičkou otázek.
+    # CSV může začínat řádky typu "name,Můj kvíz" před řádkem "question,..."
     csv_metadata = {}
     header_index = 0
     metadata_keys = {'name', 'category', 'difficulty', 'time_limit'}
@@ -312,8 +379,8 @@ def import_csv():
 
     data_rows = rows[header_index + 1:]
 
-    # Parse questions
-    valid_correct = {'a': 0, 'b': 1, 'c': 2, 'd': 3}
+    # Parsování otázek z CSV řádků
+    valid_correct = {'a': 0, 'b': 1, 'c': 2, 'd': 3}  # mapování písmena na index
     questions_data = []
     errors = []
 
@@ -323,8 +390,8 @@ def import_csv():
             continue
 
         if len(row) > 6:
-            # Extra columns — commas in the question text; last col = correct,
-            # previous 4 = answers, everything before = question joined back.
+            # Extra sloupce – čárky v textu otázky; poslední sloupec = správná odpověď,
+            # předchozí 4 = odpovědi, vše před = text otázky spojený zpět dohromady.
             correct_letter = row[-1].strip().lower()
             answers = [row[-5].strip(), row[-4].strip(), row[-3].strip(), row[-2].strip()]
             q_text = ','.join(row[:-5]).strip()
@@ -357,6 +424,7 @@ def import_csv():
         if not questions_data:
             return redirect(url_for('quiz.create_quiz'))
 
+    # Priorita metadat: formulář (uživatel vyplnil) > CSV > výchozí
     # Quiz metadata: form fields > CSV metadata > defaults
     name = request.form.get('name', '').strip()
     if not name or len(name) < 3:
@@ -381,6 +449,7 @@ def import_csv():
         csv_tl = csv_metadata.get('time_limit', '')
         time_limit = int(csv_tl) if csv_tl.isdigit() and 5 <= int(csv_tl) <= 120 else 30
 
+    # Vytvoření kvízu + otázek v jedné transakci – buď vše nebo nic
     # Create quiz + questions in single transaction
     quiz = Quiz(
         name=name,
@@ -405,8 +474,11 @@ def import_csv():
 
     db.session.commit()
 
+    # check_achievements() po importu → může udělit 'Tvůrce' nebo 'Aktivní autor'
     from achievements import check_achievements
     new_achievements = check_achievements(current_user)
+    # Flash s prefixem 'achievement:' → base.html Jinja šablona parsuje tento formát
+    # a vyvolá JS showAchievementToast() z main.js pro zobrazení toastu
     for ach in new_achievements:
         flash(f'achievement:{ach.name}|{ach.icon}|{ach.tier}', 'achievement')
 
@@ -417,7 +489,12 @@ def import_csv():
 @quiz_bp.route('/quiz/create', methods=['GET', 'POST'])
 @login_required
 def create_quiz():
-    """Vytvoření nového kvízu."""
+    """Vytvoření nového kvízu (pouze metadat – otázky se přidávají poté v edit_quiz).
+    
+    Po úspěšném vytvoření přesměruje na stránku úprav kvízu.
+    Kontroluje achievementy po vytvoření (např. 'Tvůrce', 'Aktivní autor').
+    Šablona: templates/quiz_create.html
+    """
     if request.method == 'POST':
         name = request.form.get('name', '').strip()
         category = request.form.get('category', '').strip()
@@ -444,9 +521,10 @@ def create_quiz():
         db.session.add(quiz)
         db.session.commit()
         
-        # Kontrola achievementů po vytvoření kvízu
+        # Kontrola achievementů po vytvoření kvízu → může udělit 'Tvůrce' (1 kvíz) nebo 'Aktivní autor' (3 kvízy)
         from achievements import check_achievements
         new_achievements = check_achievements(current_user)
+        # Flash s prefixem 'achievement:' → base.html ho rozpozná a zobrazí toast (main.js)
         for ach in new_achievements:
             flash(f'achievement:{ach.name}|{ach.icon}|{ach.tier}', 'achievement')
         
@@ -459,7 +537,12 @@ def create_quiz():
 @quiz_bp.route('/quiz/<int:quiz_id>/edit', methods=['GET', 'POST'])
 @login_required
 def edit_quiz(quiz_id):
-    """Úprava kvízu."""
+    """Úprava kvízu – metadat a správa otázek.
+    
+    Přístup má pouze autor kvízu nebo admin.
+    Otázky se přidávají/upravují/mažou přes AJAX (add_question, edit_question, delete_question).
+    Šablona: templates/quiz_edit.html
+    """
     quiz = Quiz.query.get_or_404(quiz_id)
     
     # Kontrola oprávnění
@@ -490,7 +573,10 @@ def edit_quiz(quiz_id):
 @quiz_bp.route('/quiz/<int:quiz_id>/add-question', methods=['POST'])
 @login_required
 def add_question(quiz_id):
-    """Přidání otázky do kvízu."""
+    """Přidání otázky do kvízu (AJAX JSON endpoint).
+    
+    Očekává JSON: {text: '...', answers: [{text, is_correct}, ...]} (právě 4 odpovědi)
+    """
     quiz = Quiz.query.get_or_404(quiz_id)
     
     # Kontrola oprávnění
@@ -555,7 +641,10 @@ def delete_question(question_id):
 @quiz_bp.route('/question/<int:question_id>', methods=['PUT'])
 @login_required
 def edit_question(question_id):
-    """Úprava otázky."""
+    """Úprava otázky (AJAX JSON endpoint).
+    
+    Staré odpovědi se smažou a nahradí novými (jednodušší než UPDATE každé).
+    """
     question = Question.query.get_or_404(question_id)
     quiz = question.quiz
     
@@ -580,7 +669,7 @@ def edit_question(question_id):
     # Aktualizace textu otázky
     question.text = question_text
     
-    # Smazání starých odpovědí a vytvoření nových
+    # Smazání starých odpovědí a vytvoření nových – jednodušší než aktualizovat každou zvlášť
     Answer.query.filter_by(question_id=question.id).delete()
     
     for ans in answers_data:
@@ -619,7 +708,19 @@ def delete_quiz(quiz_id):
 
 @quiz_bp.route('/leaderboard')
 def leaderboard():
-    """Žebříček nejlepších hráčů – více režimů, filtrování, časové období, konkrétní kvíz."""
+    """Žebříček nejlepších hráčů – více režimů, filtrování, časové období.
+    
+    Režimy (mode):
+      - overall:  vážený průměr skóre (min 10 her)
+      - activity: počet odehraných her (min 10)
+      - perfects: počet 100% výsledků (min 10 her)
+      - speed:    průměrný čas na otázku (min 5 her s ≥ 50% skóre)
+    
+    Filtry: difficulty (easy/medium/hard), period (daily/weekly/alltime), quiz_id (konkrétní kvíz)
+    Pro konkrétní kvíz: nejlepší pokus každého hráče.
+    Pinned user: aktuálně přihlášený uživatel je zvýrazněný v žebříčku.
+    Šablona: templates/leaderboard.html
+    """
     from sqlalchemy import func, case
     from datetime import datetime, timedelta
 
@@ -815,7 +916,11 @@ def leaderboard():
 
 @quiz_bp.route('/leaderboard/profile/<int:user_id>')
 def mini_profile(user_id):
-    """Mini profil hráče pro leaderboard modal."""
+    """Mini profil hráče pro leaderboard hover popover (JSON).
+    
+    Volá ho main.js přes fetch() při najetí myší na jméno hráče.
+    Vrací: jméno, avatar, statistiky, oblíbená/nejlepší kategorie, top 3 achievementy.
+    """
     from sqlalchemy import func
 
     user = User.query.get_or_404(user_id)

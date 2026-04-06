@@ -1,5 +1,19 @@
 """
 API endpointy pro desktop aplikaci.
+
+Tento modul slouží jako backend pro desktopovou PyQt5 aplikaci (desktop_app.py).
+Je vyňat z CSRF ochrany (viz main.py: csrf.exempt(api_bp)), protože
+desktopová app posílá JSON požadavky bez CSRF tokenu.
+
+Klíčový tok – SSO (Single Sign-On) přihlášení:
+  1. Uživatel na webu klikne "Hrát" → quiz.py:play_quiz()
+  2. play_quiz() volá generate_sso_token() → vygeneruje jednorázový token
+  3. Spustí desktop_app.py s --token parametrem
+  4. Desktop app pošle POST /api/auth/token s tokenem
+  5. api_token_login() ověří token a přihlásí uživatele
+  6. Token se smaže (jednorázový) a expiruje za 2 minuty
+
+Blueprint: api_bp (URL prefix: /api)
 """
 import secrets
 from datetime import datetime, timedelta, timezone
@@ -10,12 +24,17 @@ from models import User, Quiz, Question, Answer, GameResult, UserAnswer, pct
 
 api_bp = Blueprint('api', __name__, url_prefix='/api')
 
-# Úložiště tokenů pro SSO (token -> {user_id, expires})
+# In-memory úložiště SSO tokenů. Každý token = {user_id, expires}.
+# Tokeny jsou jednorázové (pop) a expirují za 2 minuty.
 _sso_tokens = {}
 
 
 def generate_sso_token(user_id):
-    """Vygeneruje jednorázový SSO token pro uživatele."""
+    """Vygeneruje jednorázový SSO token pro uživatele.
+    
+    Voláno z quiz.py:play_quiz(). Token je kryptograficky bezpečný
+    (secrets.token_urlsafe) a platí 2 minuty.
+    """
     token = secrets.token_urlsafe(48)
     _sso_tokens[token] = {
         'user_id': user_id,
@@ -25,7 +44,10 @@ def generate_sso_token(user_id):
 
 
 def validate_sso_token(token):
-    """Ověří SSO token a vrátí user_id. Token je jednorázový."""
+    """Ověří SSO token a vrátí user_id. Token je jednorázový (pop = smaže se).
+    
+    Vrací None pokud token neexistuje nebo expiroval.
+    """
     token_data = _sso_tokens.pop(token, None)
     if not token_data:
         return None
@@ -36,7 +58,10 @@ def validate_sso_token(token):
 
 @api_bp.route('/auth/token', methods=['POST'])
 def api_token_login():
-    """Přihlášení pomocí SSO tokenu (z webu do desktopu)."""
+    """Přihlášení pomocí SSO tokenu (z webu do desktopu).
+    
+    Desktop app pošle {token: '...'} a dostane zpět info o uživateli.
+    """
     data = request.get_json()
     if not data or 'token' not in data:
         return jsonify({'error': 'Chybí token'}), 400
@@ -51,7 +76,10 @@ def api_token_login():
     if not user:
         return jsonify({'error': 'Uživatel nenalezen'}), 404
     
+    # login_user() uloží user.id do Flask session cookie →
+    # desktop_app.py:APIClient.session (requests.Session) udrží cookie automaticky
     login_user(user)
+    # Vrátí user info → desktop_app.py:MainWindow.on_login_success() ho převezme
     return jsonify({
         'success': True,
         'user': {
@@ -65,7 +93,10 @@ def api_token_login():
 
 @api_bp.route('/login', methods=['POST'])
 def api_login():
-    """API přihlášení pro desktop aplikaci."""
+    """API přihlášení pro desktop aplikaci (záložní metoda přes email+heslo).
+    
+    Voláno z desktop_app.py:LoginWidget.try_login() → APIClient.login().
+    """
     data = request.get_json()
     
     if not data:
@@ -96,7 +127,11 @@ def api_login():
 
 @api_bp.route('/quizzes', methods=['GET'])
 def api_quizzes():
-    """Získání seznamu kvízů."""
+    """Získání seznamu kvízů.
+    
+    Voláno z desktop_app.py:QuizListWidget.load_quizzes() → APIClient.get_quizzes().
+    Filtry category/difficulty se předávají jako query parametry.
+    """
     category = request.args.get('category', '')
     difficulty = request.args.get('difficulty', '')
     
@@ -149,7 +184,11 @@ def api_quiz_questions(quiz_id):
 @api_bp.route('/quiz/<int:quiz_id>/submit', methods=['POST'])
 @login_required
 def api_submit_quiz(quiz_id):
-    """API endpoint pro odeslání výsledků kvízu."""
+    """API endpoint pro odeslání výsledků kvízu (desktop verze).
+    
+    Stejná logika vyhodnocení jako quiz.py:submit_quiz(),
+    ale bez kontroly achievementů (ta probíhá jen na webu).
+    """
     quiz = Quiz.query.get_or_404(quiz_id)
     data = request.get_json()
     
@@ -159,12 +198,13 @@ def api_submit_quiz(quiz_id):
     answers = data['answers']
     time_spent = data.get('time_spent', 0)
     
-    # Minimální čas 0.5s na otázku
+    # Minimální čas 0.5s na otázku – ochrana proti příliš rychlému odeslání
     min_time = max(1, int(len(quiz.questions) * 0.5))
     if time_spent < min_time:
         time_spent = min_time
 
-    # Výpočet skóre
+    # Výpočet skóre – stejný algoritmus jako v quiz.py:submit_quiz()
+    # (duplikovaný kód, protože API a web mají různý response formát)
     score = 0
     max_score = len(quiz.questions)
     
@@ -176,10 +216,11 @@ def api_submit_quiz(quiz_id):
         max_score=max_score,
         time_spent=time_spent
     )
+    # flush() získá game_result.id bez commitování → potřebujeme pro UserAnswer.game_id
     db.session.add(game_result)
     db.session.flush()
     
-    # Zpracování odpovědí
+    # Zpracování odpovědí – formát shodný s quiz.js: [{question_id, answer_id}, ...]
     results = []
     for answer_data in answers:
         question_id = answer_data.get('question_id')
@@ -223,6 +264,8 @@ def api_submit_quiz(quiz_id):
     game_result.score = score
     db.session.commit()
     
+    # pct() z models.py – formátuje procenta (85.0 → 85, 72.3 → 72.3)
+    # Výsledek se vrátí do desktop_app.py:QuizGameWidget.finish_quiz()
     return jsonify({
         'success': True,
         'score': score,
@@ -250,7 +293,7 @@ def api_user_stats():
 
 @api_bp.route('/achievements/<int:user_id>', methods=['GET'])
 def api_user_achievements(user_id):
-    """Vrátí achievements uživatele jako JSON."""
+    """Vrátí achievementy uživatele jako JSON (pro externí zobrazení)."""
     user = User.query.get_or_404(user_id)
     
     from achievements import get_user_achievements_data

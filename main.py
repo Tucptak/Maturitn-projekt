@@ -1,38 +1,58 @@
 """
 Hlavní soubor Flask aplikace - Brainiac.
+
+Toto je vstupní bod celé webové aplikace. Zde se:
+  1. Vytváří Flask instance a nastavuje SECRET_KEY (pro session cookies)
+  2. Aktivuje CSRF ochrana (Flask-WTF) na všechny POST formuláře
+  3. Inicializuje databáze (database.py → MySQL)
+  4. Seedují výchozí achievementy do DB (achievements.py)
+  5. Nastavuje Flask-Login pro správu přihlášení
+  6. Registrují všechny blueprinty (moduly aplikace):
+     - auth_bp   → /login, /register, /profile, …     (auth.py)
+     - quiz_bp   → /quizzes, /quiz/<id>, …              (quiz.py)
+     - admin_bp  → /admin/…                              (admin.py)
+     - api_bp    → /api/… (CSRF výjimka – desktop app)  (api.py)
+     - stats_bp  → /stats/…                              (stats.py)
+  7. Definuje hlavní stránku (/) a chybové stránky (404, 500)
+
+Spuštění: python main.py → Flask dev server na http://localhost:5000
 """
 import os
 from flask import Flask, render_template, request
 from dotenv import load_dotenv
 from flask_wtf.csrf import CSRFProtect
 
-# Načtení environment proměnných
+# Načtení environment proměnných z .env souboru (DB heslo, SECRET_KEY, …)
 load_dotenv()
 
 # Inicializace Flask aplikace
 app = Flask(__name__)
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY', 'dev-secret-key-change-in-production')
 
-# CSRF ochrana
+# CSRF ochrana – automaticky vyžaduje token u každého POST požadavku.
+# Tokeny se vkládají do formulářů pomocí {{ csrf_token() }} v šablonách
+# a do JS fetch požadavků přes hlavičku X-CSRFToken (viz quiz.js).
 csrf = CSRFProtect(app)
 
-# Inicializace databáze
+# Inicializace databáze – propojí SQLAlchemy s Flask a vytvoří tabulky
 from database import init_db, db
 init_db(app)
 
-# Seed achievementů
+# Seed achievementů – naplní tabulku 'achievements' výchozími daty,
+# pokud je prázdná (viz ACHIEVEMENT_DEFINITIONS v achievements.py)
 with app.app_context():
     from achievements import seed_achievements
     seed_achievements()
 
-# Inicializace přihlašování
+# Flask-Login – správa přihlašovacích sessions.
+# login_view = kam přesměrovat nepřihlášené uživatele.
 from auth import auth_bp, login_manager
 login_manager.init_app(app)
 login_manager.login_view = 'auth.login'
 login_manager.login_message = 'Pro přístup k této stránce se musíte přihlásit.'
 login_manager.login_message_category = 'warning'
 
-# Registrace blueprintů
+# Registrace blueprintů – každý modul má svůj Blueprint s vlastními routami
 app.register_blueprint(auth_bp)
 
 from quiz import quiz_bp
@@ -41,6 +61,8 @@ app.register_blueprint(quiz_bp)
 from admin import admin_bp
 app.register_blueprint(admin_bp)
 
+# API blueprint je vyňat z CSRF ochrany, protože desktopová aplikace
+# (desktop_app.py) posílá JSON požadavky bez CSRF tokenu.
 from api import api_bp
 app.register_blueprint(api_bp)
 csrf.exempt(api_bp)
@@ -51,14 +73,14 @@ app.register_blueprint(stats_bp)
 
 @app.route('/')
 def index():
-    """Hlavní stránka."""
+    """Hlavní stránka – zobrazuje nejnovější a nejpopulárnější kvízy."""
     from models import Quiz, GameResult
     from flask_login import current_user
     
-    # Nejnovější kvízy
+    # Nejnovější kvízy – posledních 6 podle data vytvoření
     recent_quizzes = Quiz.query.order_by(Quiz.created_at.desc()).limit(6).all()
     
-    # Populární kvízy (nejvíce hraných)
+    # Populární kvízy – 6 nejhranějších (GROUP BY quiz_id, seřazeno podle počtu her)
     from sqlalchemy import func
     popular_quiz_ids = db.session.query(
         GameResult.quiz_id,
@@ -73,6 +95,7 @@ def index():
         if quiz:
             popular_quizzes.append({'quiz': quiz, 'play_count': play_count})
     
+    # Šablona: templates/index.html
     return render_template('index.html', 
                          recent_quizzes=recent_quizzes,
                          popular_quizzes=popular_quizzes)
