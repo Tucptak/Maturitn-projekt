@@ -50,12 +50,14 @@ copy .env.example .env
 3. Upravte `.env` s vašimi údaji:
 ```
 DB_HOST=localhost
-DB_USER=vas_uzivatel(databáze je vytvořena na vyuka9 ve školní databázi na phpmyadmin)
+DB_USER=vas_uzivatel
 DB_PASSWORD=vase_heslo
 DB_NAME=vyuka9
 SECRET_KEY=nahodny-bezpecnostni-klic
 API_URL=http://localhost:5000
 ```
+
+> **Poznámka:** Ve školním prostředí je databáze `vyuka9` pod `student9` na školním phpMyAdmin serveru.
 
 > **Poznámka:** Tabulky se vytvoří automaticky při prvním spuštění aplikace. Soubor `schema.sql` slouží jako referenční dokumentace databázového schématu.
 
