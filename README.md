@@ -80,7 +80,17 @@ V průběhu aplikace je spouštěna když uživatel zapne kvíz
 
 > **Důležité:** Desktopová aplikace komunikuje s webovou aplikací přes API. Před spuštěním desktop app musí běžet webová aplikace (`python main.py`).
 
-### 6. Spuštění testů (volitelné)
+### 6. Testovací účet
+
+Pro testování je připraven administrátorský účet:
+
+| | |
+|---|---|
+| **Email** | skrivanek@gmail.com |
+| **Heslo** | Skrivan9+ |
+| **Role** | Administrátor |
+
+### 7. Spuštění testů (volitelné)
 
 ```bash
 pytest test_brainiac.py
