@@ -1,30 +1,31 @@
-from flask import Flask, redirect, render_template, request, url_for
+from flask import Flask, render_template, request, redirect, url_for
+import os
+import json
 
-app = Flask(__name__, template_folder="templates")
-app.config["SECRET_KEY"] = "tajny_klic"
-
-
-KOMENTARE = [
-    {"author": "Pavel Podrazký", "text": "Super stránka!"},
-    {"author": "Pepa Vomáčka", "text": "Nudná stránka!"},
-    {"author": "Jana Nováková", "text": "Krásná stránka!"},
-]
-
+app = Flask(__name__)
 
 @app.route("/")
 def index():
-    chyba = request.args.get("chyba")
-    return render_template("index.html", komentare=KOMENTARE, chyba=chyba)
+    aktivni_soubor = os.path.dirname(__file__)
+    SITE_ROOT = os.path.realpath(aktivni_soubor)
+    json_url = os.path.join(SITE_ROOT, "static/data", "uzivatele.json")
+    UZIVATELE = json.load(open(json_url, "r", encoding="utf-8"))
+    print(UZIVATELE)
+    return render_template("index.html", uzivatle=UZIVATELE)
 
+@app.route("/zapis")
+def zapis_uzivatele():
+    jmeno = "addmin"
+    heslo = "admin"
 
-@app.route("/komentar", methods=["POST"])
-def zpracuj_komentar():
-    author = request.form.get("author")
-    text = request.form.get("text")
-    if not author or not text:
-        return redirect(url_for("index", chyba="Vyplňte prosím obě pole."))
-    KOMENTARE.append({"author": author, "text": text})
-    return redirect(url_for("index", chyba=None))
+    SITE_ROOT = os.path.realpath(os.path.dirname(__file__))
+    json_url = os.path.join(SITE_ROOT, "static/data", "uzivatele.json")
+    UZIVATELE = json.load(open(json_url, "r", encoding="utf-8"))
+    UZIVATELE.append({jmeno: heslo})
+    with open(json_url, "w", encoding="utf-8") as outfile:
+        json.dump(UZIVATELE, outfile)
+
+    return redirect(url_for("index"))
 
 
 if __name__ == "__main__":
