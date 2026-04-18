@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html lang="en">
+	<head>
+		<meta charset="UTF-8" />
+		<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+		<title>Můj Blog</title>
+		<link rel="stylesheet" href="/static/style.css" />
+	</head>
+	<body>
+		<h1>Můj Blog</h1>
+		<div>
+			<h2>Ahoj, vítám Vás na mém blogu.</h2>
+			<p>
+				Lorem ipsum dolor sit amet, consectetur adipiscing elit, sed do eiusmod
+				tempor incididunt ut labore et dolore magna aliqua. Amet facilisis magna
+				etiam tempor orci eu lobortis elementum nibh. Ultricies lacus sed turpis
+				tincidunt id aliquet. Egestas integer eget aliquet nibh praesent
+				tristique magna sit amet. Curabitur gravida arcu ac tortor dignissim.
+				Sed turpis tincidunt id aliquet risus. Rhoncus dolor purus non enim
+				praesent. Pulvinar elementum integer enim neque volutpat ac tincidunt
+				vitae. Interdum varius sit amet mattis vulputate. Eget nunc scelerisque
+				viverra mauris in aliquam sem fringilla. Elementum tempus egestas sed
+				sed risus pretium quam.
+			</p>
+		</div>
+		<h2>Komentáře</h2>
+		{% if chyba %}
+		<p class="chyba">{{ chyba }}</p>
+		{% endif %}
+		<form action="{{ url_for('zpracuj_komentar') }}" method="POST">
+			<label for="author">Jméno:</label>
+			<input type="text" name="author" id="author" /><br />
+			<label for="text">Text:</label>
+			<textarea name="text" id="text" cols="30" rows="10"></textarea> <br />
+			<input type="submit" value="Odeslat" />
+		</form>
+		<div>
+			{% for komentar in komentare %}
+			<div class="komentar">
+				<h3>{{ komentar.author }}</h3>
+				<p>{{ komentar.text }}</p>
+			</div>
+			{% endfor %}
+		</div>
+	</body>
+</html>
